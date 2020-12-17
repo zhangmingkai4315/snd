@@ -8,3 +8,5 @@ edition = "2018"
 
 [dependencies]
 structopt = { version = "0.3" }
+trust-dns-resolver = "0.19"
+governor = "0.3.1"

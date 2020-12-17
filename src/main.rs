@@ -1,4 +1,7 @@
+extern crate trust_dns_resolver;
+extern crate governor;
 extern crate structopt;
+
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
