@@ -9,9 +9,11 @@ pub struct Runner {
 impl Runner {
     pub(crate) fn new(arguments: Argument) -> Runner {
         let mut workers = Vec::new();
-        let arguments = Arc::new(arguments);
-        for i in 0..arguments.client {
-            workers.push(Worker::new(i, arguments.clone()));
+        let origin_arguments = Arc::new(arguments);
+        for i in 0..origin_arguments.client {
+            let argument = origin_arguments.clone();
+            argument.qps = origin_arguments.qps/origin_arguments.client;
+            workers.push(Worker::new(i, argument));
         }
         Runner { arguments, workers }
     }
