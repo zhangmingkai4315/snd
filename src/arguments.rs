@@ -25,9 +25,26 @@ pub(crate) struct Argument {
     #[structopt(short = "d", long = "domain", default_value = "www.google.com")]
     pub domain: String,
 
-    #[structopt(short = "t", long = "type", default_value = "A")]
+    #[structopt(short = "t", long = "type", default_value = "A,NS")]
     pub qty: String,
 
     #[structopt(long = "id_random")]
     pub id_random: bool,
+}
+
+impl Default for Argument {
+    fn default() -> Argument {
+        Argument {
+            debug: false,
+            port: 53,
+            server: "8.8.8.8".to_string(),
+            qps: 10,
+            max: 100,
+            timeout: 5,
+            client: 5,
+            domain: "www.google.com".to_string(),
+            qty: "A".to_string(),
+            id_random: false,
+        }
+    }
 }

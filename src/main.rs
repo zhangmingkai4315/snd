@@ -1,4 +1,5 @@
 extern crate governor;
+extern crate rand;
 extern crate structopt;
 extern crate trust_dns_client;
 

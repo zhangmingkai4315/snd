@@ -10,3 +10,4 @@ edition = "2018"
 structopt = { version = "0.3" }
 trust-dns-client = "*"
 governor = "0.3.1"
+rand = "0.8.0"

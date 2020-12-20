@@ -1,6 +1,5 @@
 use crate::arguments::Argument;
 use std::sync::Arc;
-use trust_dns_client::client::AsyncClient;
 
 pub struct Runner {
     arguments: Arc<Argument>,
