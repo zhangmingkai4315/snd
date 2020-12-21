@@ -28,8 +28,10 @@ pub(crate) struct Argument {
     pub qty: String,
     #[structopt(long = "timeout", default_value = "10")]
     pub timeout: usize,
-    #[structopt(long = "id_random")]
+    #[structopt(long = "id-random")]
     pub id_random: bool,
+    #[structopt(long = "no-rd")]
+    pub nord: bool,
 }
 
 impl fmt::Display for Argument {
@@ -46,7 +48,9 @@ simulate client number: {}
 query per second(QPS): {}
 max query number: {},
 ------------ Advance -----------
-random port: {}\n",
+random port: {}
+turn off rd: {}
+\n",
             self.domain,
             self.qty,
             self.server,
@@ -54,24 +58,9 @@ random port: {}\n",
             self.client,
             self.qps,
             self.max,
-            self.id_random
+            self.id_random,
+            self.nord,
         )
     }
 }
 
-impl Default for Argument {
-    fn default() -> Argument {
-        Argument {
-            debug: false,
-            port: 53,
-            server: "8.8.8.8".to_string(),
-            qps: 10,
-            max: 100,
-            timeout: 5,
-            client: 5,
-            domain: "www.google.com".to_string(),
-            qty: "A".to_string(),
-            id_random: false,
-        }
-    }
-}

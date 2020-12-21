@@ -2,7 +2,7 @@ use crate::arguments::Argument;
 use crate::cache::Cache;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use futures::future::join_all;
-use futures::Future;
+use futures::{Future};
 use governor::{Quota, RateLimiter};
 use nonzero_ext::*;
 use std::error::Error;
@@ -12,6 +12,9 @@ use std::sync::{Arc, Mutex};
 use tokio::macros::support::thread_rng_n;
 use tokio::time::Duration;
 use trust_dns_client::op::Message;
+use std::net::{SocketAddr, UdpSocket};
+use trust_dns_client::udp::UdpClientConnection;
+use trust_dns_client::client::ClientConnection;
 
 pub struct Runner {
     arguments: Argument,
@@ -27,7 +30,7 @@ impl Runner {
         let receiver = Arc::new(Mutex::new(receiver));
         let origin_arguments = Arc::new(arguments.clone());
         for i in 0..origin_arguments.client {
-            workers.push(QueryWorker::new(i, receiver.clone()));
+            workers.push(QueryWorker::new(i, arguments.clone(),receiver.clone()));
         }
         let producer = QueryProducer::new(arguments.clone(), sender.clone());
         Runner {
@@ -43,7 +46,7 @@ impl Runner {
 impl Drop for Runner {
     fn drop(&mut self) {
         for worker in &mut self.workers {
-            if let Some(handler) = worker.thread.take() {
+            if let Some(handler) = worker.write_thread.take() {
                 handler.join().expect("fail to join thread");
             }
         }
@@ -94,7 +97,7 @@ impl QueryProducer {
                     }
                 }
             }
-            info!("producer thread quit ");
+            info!("producer thread quit");
             drop(sender);
         });
         QueryProducer { thread }
@@ -103,29 +106,57 @@ impl QueryProducer {
 
 struct QueryWorker {
     id: usize,
+    arguments: Argument,
     receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
-    thread: Option<std::thread::JoinHandle<()>>,
+    write_thread: Option<std::thread::JoinHandle<()>>,
+    read_thread: Option<std::thread::JoinHandle<()>>,
 }
 impl QueryWorker {
-    fn new(id: usize, receiver: Arc<Mutex<Receiver<Vec<u8>>>>) -> QueryWorker {
+    fn new(id: usize, arguments: Argument, receiver: Arc<Mutex<Receiver<Vec<u8>>>>) -> QueryWorker {
         let rx = receiver.clone();
+        let server_port = format!("{}:{}", arguments.server, arguments.port);
+        let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+        socket.connect(server_port).expect("unable to connect to server");
+        socket.set_nonblocking(true).expect("set udp unblock fail");
         let thread = std::thread::spawn(move || {
             loop {
                 match rx.lock().unwrap().recv() {
                     Ok(data) => {
-                        println!("{:?}", data);
+                        println!("send {:?}", data.as_slice());
+                        match socket.send(data.as_slice()){
+                            Err(e) =>{
+                                println!("send error : {}", e);
+                            },
+                            Ok(_) => {},
+                        };
                     }
                     Err(e) => {
                         break;
                     }
                 };
+                let mut buffer = [0u8; 1234];
+                match socket.recv(&mut buffer) {
+                    Ok(receive) => {
+                        println!("receive {:?}", buffer);
+                    }
+                    _ => {}
+                }
             }
             info!("worker thread {} exit success", id)
         });
+        // let read_thread = std::thread::spawn(move || {
+        //     loop {
+        //         let mut buffer = [0u8;1248];
+        //         read.read(&mut buffer[..]);
+        //     }
+        //     info!("worker thread {} exit success", id)
+        // });
         QueryWorker {
             id,
+            arguments,
             receiver,
-            thread: Some(thread),
+            write_thread: Some(thread),
+            read_thread: None,
         }
     }
 }

@@ -44,7 +44,7 @@ impl Cache {
         let qty_pos = 12 + name.len();
         query.set_name(name);
         message.add_query(query);
-
+        message.set_recursion_desired(!argument.nord);
         let mut edns = Edns::default();
         // set the max payload to 1232
         // https://dnsflagday.net/2020/
@@ -66,16 +66,15 @@ impl Cache {
         vec![
             rng.gen::<u8>(),
             rng.gen::<u8>(),
-            rng.gen::<u8>(),
-            rng.gen::<u8>(),
         ]
     }
     pub fn build_message(&mut self) -> Vec<u8> {
-        let (left, _) = self.template.split_at_mut(4);
+        let (left, _) = self.template.split_at_mut(2);
         left.copy_from_slice(&Cache::get_random_id().as_slice());
         let qtype: u16 = u16::from(*(self.qty.choose(&mut rand::thread_rng()).unwrap()));
-        self.template[self.qty_pos + 1] = (qtype & 0xff00 >> 8) as u8;
-        self.template[self.qty_pos + 2] = (qtype & 0x00ff) as u8;
+        let temp = qtype.to_be_bytes();
+        self.template[self.qty_pos + 1] = temp[0];
+        self.template[self.qty_pos + 2] = temp[1];
         self.template.clone()
     }
 }
