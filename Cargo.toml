@@ -19,3 +19,4 @@ lazy_static = "1.4.0"
 
 futures = { version = "0.3.*"}
 tokio = {version = "0.2.*", features = ["full"] }
+crossbeam-channel = "0.5.0"

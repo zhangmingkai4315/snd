@@ -12,6 +12,7 @@ extern crate structopt;
 extern crate trust_dns_client;
 #[macro_use]
 extern crate log;
+extern crate crossbeam_channel;
 
 mod arguments;
 mod cache;

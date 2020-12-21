@@ -8,17 +8,16 @@ pub(crate) struct Argument {
     #[structopt(long = "debug")]
     pub debug: bool,
 
-    #[structopt(short = "p", long="port", default_value = "53")]
+    #[structopt(short = "p", long = "port", default_value = "53")]
     pub port: u16,
 
-    #[structopt(short = "s",long="server", default_value = "8.8.8.8")]
+    #[structopt(short = "s", long = "server", default_value = "8.8.8.8")]
     pub server: String,
 
-    #[structopt(short = "q",long = "qps", default_value = "10")]
+    #[structopt(short = "q", long = "qps", default_value = "10")]
     pub qps: usize,
     #[structopt(short = "m", long = "max", default_value = "100")]
     pub max: usize,
-
 
     #[structopt(short = "c", long = "client", default_value = "10")]
     pub client: usize,
