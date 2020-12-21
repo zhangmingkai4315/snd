@@ -2,19 +2,19 @@ use crate::arguments::Argument;
 use crate::cache::Cache;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use futures::future::join_all;
-use futures::{Future};
+use futures::Future;
 use governor::{Quota, RateLimiter};
 use nonzero_ext::*;
 use std::error::Error;
 use std::iter::Product;
+use std::net::{SocketAddr, UdpSocket};
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use tokio::macros::support::thread_rng_n;
 use tokio::time::Duration;
-use trust_dns_client::op::Message;
-use std::net::{SocketAddr, UdpSocket};
-use trust_dns_client::udp::UdpClientConnection;
 use trust_dns_client::client::ClientConnection;
+use trust_dns_client::op::Message;
+use trust_dns_client::udp::UdpClientConnection;
 
 pub struct Runner {
     arguments: Argument,
@@ -30,7 +30,7 @@ impl Runner {
         let receiver = Arc::new(Mutex::new(receiver));
         let origin_arguments = Arc::new(arguments.clone());
         for i in 0..origin_arguments.client {
-            workers.push(QueryWorker::new(i, arguments.clone(),receiver.clone()));
+            workers.push(QueryWorker::new(i, arguments.clone(), receiver.clone()));
         }
         let producer = QueryProducer::new(arguments.clone(), sender.clone());
         Runner {
@@ -116,18 +116,20 @@ impl QueryWorker {
         let rx = receiver.clone();
         let server_port = format!("{}:{}", arguments.server, arguments.port);
         let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-        socket.connect(server_port).expect("unable to connect to server");
+        socket
+            .connect(server_port)
+            .expect("unable to connect to server");
         socket.set_nonblocking(true).expect("set udp unblock fail");
         let thread = std::thread::spawn(move || {
             loop {
                 match rx.lock().unwrap().recv() {
                     Ok(data) => {
                         println!("send {:?}", data.as_slice());
-                        match socket.send(data.as_slice()){
-                            Err(e) =>{
+                        match socket.send(data.as_slice()) {
+                            Err(e) => {
                                 println!("send error : {}", e);
-                            },
-                            Ok(_) => {},
+                            }
+                            Ok(_) => {}
                         };
                     }
                     Err(e) => {

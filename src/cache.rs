@@ -63,10 +63,7 @@ impl Cache {
     }
     fn get_random_id() -> Vec<u8> {
         let mut rng = rand::thread_rng();
-        vec![
-            rng.gen::<u8>(),
-            rng.gen::<u8>(),
-        ]
+        vec![rng.gen::<u8>(), rng.gen::<u8>()]
     }
     pub fn build_message(&mut self) -> Vec<u8> {
         let (left, _) = self.template.split_at_mut(2);
