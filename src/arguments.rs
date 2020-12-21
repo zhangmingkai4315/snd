@@ -8,28 +8,27 @@ pub(crate) struct Argument {
     #[structopt(long = "debug")]
     pub debug: bool,
 
-    #[structopt(short = "p", default_value = "53")]
+    #[structopt(short = "p", long="port", default_value = "53")]
     pub port: u16,
 
-    #[structopt(short = "s", default_value = "8.8.8.8")]
+    #[structopt(short = "s",long="server", default_value = "8.8.8.8")]
     pub server: String,
 
-    #[structopt(long = "qps", default_value = "10")]
+    #[structopt(short = "q",long = "qps", default_value = "10")]
     pub qps: usize,
-    #[structopt(long = "max", default_value = "100")]
+    #[structopt(short = "m", long = "max", default_value = "100")]
     pub max: usize,
-    #[structopt(long = "timeout", default_value = "10")]
-    pub timeout: usize,
+
 
     #[structopt(short = "c", long = "client", default_value = "10")]
     pub client: usize,
 
     #[structopt(short = "d", long = "domain", default_value = "www.google.com")]
     pub domain: String,
-
     #[structopt(short = "t", long = "type", default_value = "A,NS")]
     pub qty: String,
-
+    #[structopt(long = "timeout", default_value = "10")]
+    pub timeout: usize,
     #[structopt(long = "id_random")]
     pub id_random: bool,
 }

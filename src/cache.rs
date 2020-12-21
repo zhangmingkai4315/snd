@@ -1,12 +1,13 @@
 use crate::arguments::Argument;
 use rand::{seq::SliceRandom, Rng};
 use std::str::FromStr;
+
 use trust_dns_client::proto::{
     op::{Edns, Message, Query},
     {rr::Name, rr::RecordType},
 };
 
-struct Cache {
+pub struct Cache {
     template: Vec<u8>,
     id_random: bool,
     qty_pos: usize,
@@ -15,7 +16,7 @@ struct Cache {
 
 #[warn(dead_code)]
 impl Cache {
-    pub fn new(argument: &Argument) -> Cache {
+    pub(crate) fn new(argument: &Argument) -> Cache {
         // let domain = argument.domain.clone();
         let mut query_type: Vec<RecordType> = vec![RecordType::A, RecordType::NS, RecordType::SOA];
         let qty = {
