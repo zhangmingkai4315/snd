@@ -1,6 +1,8 @@
+use std::fmt;
+use std::fmt::Formatter;
 use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Clone, StructOpt)]
 #[structopt(name = "snd", about = "a dns traffic generator")]
 pub(crate) struct Argument {
     #[structopt(long = "debug")]
@@ -30,6 +32,33 @@ pub(crate) struct Argument {
 
     #[structopt(long = "id_random")]
     pub id_random: bool,
+}
+
+impl fmt::Display for Argument {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "
+start generate dns traffic from snd
+------------ Basic  -----------
+domain: {}
+query type: {}
+server : {}/{}
+simulate client number: {}
+query per second(QPS): {}
+max query number: {},
+------------ Advance -----------
+random port: {}\n",
+            self.domain,
+            self.qty,
+            self.server,
+            self.port,
+            self.client,
+            self.qps,
+            self.max,
+            self.id_random
+        )
+    }
 }
 
 impl Default for Argument {

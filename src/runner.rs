@@ -1,25 +1,33 @@
 use crate::arguments::Argument;
 use std::sync::Arc;
 
-pub struct Runner {
-    arguments: Arc<Argument>,
-    workers: Vec<Worker>,
+pub struct Runner<'a> {
+    arguments: &'a Argument,
+    workers: Vec<QueryWorker>,
 }
 
-impl Runner {
-    pub(crate) fn new(arguments: Argument) -> Runner {
+impl<'a> Runner<'a> {
+    pub(crate) fn new(arguments: &'a mut Argument) -> Runner {
         let mut workers = Vec::new();
-        let origin_arguments = Arc::new(arguments);
+        let qps = {
+            let qps = arguments.qps / arguments.client;
+            if qps == 0 {
+                1
+            } else {
+                qps
+            }
+        };
+        arguments.qps = qps;
+        let origin_arguments = Arc::new(arguments.clone());
         for i in 0..origin_arguments.client {
             let argument = origin_arguments.clone();
-            argument.qps = origin_arguments.qps/origin_arguments.client;
-            workers.push(Worker::new(i, argument));
+            workers.push(QueryWorker::new(i, argument));
         }
         Runner { arguments, workers }
     }
 }
 
-impl Drop for Runner {
+impl<'a> Drop for Runner<'a> {
     fn drop(&mut self) {
         for worker in &mut self.workers {
             if let Some(handler) = worker.thread.take() {
@@ -29,18 +37,18 @@ impl Drop for Runner {
     }
 }
 
-struct Worker {
+struct QueryWorker {
     id: usize,
     thread: Option<std::thread::JoinHandle<()>>,
 }
-impl Worker {
-    fn new(id: usize, argument: Arc<Argument>) -> Worker {
+impl QueryWorker {
+    fn new(id: usize, argument: Arc<Argument>) -> QueryWorker {
         let thread = std::thread::spawn(move || {
             // gen_traffic(argument);
-            println!("{:?}", argument);
+            // TODO
             return;
         });
-        Worker {
+        QueryWorker {
             id,
             thread: Some(thread),
         }
