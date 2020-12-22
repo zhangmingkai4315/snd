@@ -1,16 +1,23 @@
 use std::collections::HashMap;
-use trust_dns_client::op::{Message};
+use trust_dns_client::op::Message;
 
-
-#[derive(Default)]
-struct QueryStatusStore {
+#[derive(Default, Clone)]
+pub struct QueryStatusStore {
     total: usize,
     query_type: HashMap<u16, usize>,
     reply_code: HashMap<u16, usize>,
 }
 
 impl QueryStatusStore {
-    fn update(&mut self, message: &Message) {
+    pub fn update_query(&mut self, qtype: u16) {
+        self.total = self.total + 1;
+        match self.query_type.get(&qtype) {
+            Some(v) => self.query_type.insert(qtype, v + 1),
+            _ => self.query_type.insert(qtype, 1),
+        };
+    }
+
+    pub fn update(&mut self, message: &Message) {
         self.total = self.total + 1;
         let qtype = u16::from(message.queries()[0].query_type());
         match self.query_type.get(&qtype) {
@@ -25,36 +32,44 @@ impl QueryStatusStore {
     }
 }
 
-struct RunnerReport {
+pub struct RunnerReport {
     start: std::time::SystemTime,
-    end: std::time::SystemTime,
-    producer_report: QueryStatusStore,
-    consumer_report: QueryStatusStore,
+    end: Option<std::time::SystemTime>,
+    producer_report: Option<QueryStatusStore>,
+    consumer_report: Option<QueryStatusStore>,
 }
 
 impl RunnerReport {
-    fn set_start_time(&mut self, begin_at: std::time::SystemTime) {
+    pub fn new() -> RunnerReport {
+        RunnerReport {
+            start: std::time::SystemTime::now(),
+            end: None,
+            producer_report: None,
+            consumer_report: None,
+        }
+    }
+    pub fn set_start_time(&mut self, begin_at: std::time::SystemTime) {
         self.start = begin_at;
     }
-    fn set_end_time(&mut self, end_at: std::time::SystemTime) {
-        self.end = end_at;
+    pub fn set_end_time(&mut self, end_at: std::time::SystemTime) {
+        self.end = Some(end_at);
     }
-    fn set_producer_report(&mut self, store: QueryStatusStore) {
-        self.producer_report = store;
+    pub fn set_producer_report(&mut self, store: QueryStatusStore) {
+        self.producer_report = Some(store);
     }
-    fn set_consumer_report(&mut self, store: QueryStatusStore) {
-        self.consumer_report = store;
+    pub fn set_consumer_report(&mut self, store: QueryStatusStore) {
+        self.consumer_report = Some(store);
     }
-    fn report(&self, output: impl ReportOutput) -> String {
-        output.format(&self)
+    pub fn report(&self, output: impl ReportOutput) {
+        println!("{}", output.format(&self))
     }
 }
 
-trait ReportOutput {
+pub trait ReportOutput {
     fn format(&self, report: &RunnerReport) -> String;
 }
 
-enum ReportType {
+pub enum ReportType {
     Basic,
     JSON,
     Color,

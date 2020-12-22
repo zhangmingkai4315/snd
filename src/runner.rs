@@ -2,21 +2,22 @@ use crate::arguments::Argument;
 use crate::cache::Cache;
 use crossbeam_channel::{bounded, Receiver, Sender};
 
+use crate::report::{QueryStatusStore, ReportType, RunnerReport};
 use governor::{Quota, RateLimiter};
 use nonzero_ext::*;
-use std::net::{UdpSocket};
+use std::net::UdpSocket;
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use trust_dns_client::op::Message;
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
-
 pub struct Runner {
     arguments: Argument,
     workers: Vec<QueryWorker>,
     producer: QueryProducer,
     consumer: QueryConsumer,
+    report: RunnerReport,
 }
 
 impl Runner {
@@ -46,6 +47,7 @@ impl Runner {
             workers,
             producer,
             consumer,
+            report: RunnerReport::new(),
         }
     }
 }
@@ -57,11 +59,16 @@ impl Drop for Runner {
                 handler.join().expect("fail to join thread");
             }
         }
-        self.consumer.report();
+        self.report
+            .set_producer_report((*self.producer.store.lock().unwrap()).clone());
+        self.report
+            .set_consumer_report((*self.consumer.store.lock().unwrap()).clone());
+        self.report.report(ReportType::Basic);
     }
 }
 
 struct QueryProducer {
+    store: Arc<Mutex<QueryStatusStore>>,
     thread: std::thread::JoinHandle<()>,
 }
 
@@ -81,6 +88,8 @@ impl QueryProducer {
         };
         let mut current_counter: usize = 0;
         let mut cache = Cache::new(&argument.clone());
+        let store = Arc::new(Mutex::new(QueryStatusStore::default()));
+        let thread_store = store.clone();
         let thread = std::thread::spawn(move || {
             let limiter = rate_limiter.as_ref();
             loop {
@@ -97,7 +106,11 @@ impl QueryProducer {
                     if current_counter != max_counter {
                         println!("{}", current_counter);
                         current_counter = current_counter + 1;
-                        sender.send(cache.build_message());
+                        let (data, qtype) = cache.build_message();
+                        sender.send(data);
+                        if let Ok(mut v) = thread_store.lock() {
+                            v.update_query(qtype);
+                        }
                     } else {
                         break;
                     }
@@ -106,7 +119,7 @@ impl QueryProducer {
             info!("producer thread quit");
             drop(sender);
         });
-        QueryProducer { thread }
+        QueryProducer { store, thread }
     }
 }
 
@@ -174,21 +187,28 @@ struct QueryConsumer {
     arguments: Argument,
     receiver: Receiver<Message>,
     thread: Option<JoinHandle<()>>,
+    store: Arc<Mutex<QueryStatusStore>>,
 }
 
 impl QueryConsumer {
     fn new(arguments: Argument, receiver: Receiver<Message>) -> QueryConsumer {
         let thread_receiver = receiver.clone();
-        let thread = std::thread::spawn(move || for _message in thread_receiver {});
+        let store = Arc::new(Mutex::new(QueryStatusStore::default()));
+        let thread_store = store.clone();
+        let thread = std::thread::spawn(move || {
+            for _message in thread_receiver {
+                match thread_store.lock() {
+                    Ok(mut v) => v.update(&_message),
+                    _ => {}
+                }
+            }
+        });
 
         QueryConsumer {
             arguments,
             receiver,
             thread: Some(thread),
+            store,
         }
-    }
-
-    fn report(&self) {
-        println!("consumer print report...");
     }
 }

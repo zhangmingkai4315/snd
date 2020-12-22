@@ -65,14 +65,14 @@ impl Cache {
         let mut rng = rand::thread_rng();
         vec![rng.gen::<u8>(), rng.gen::<u8>()]
     }
-    pub fn build_message(&mut self) -> Vec<u8> {
+    pub fn build_message(&mut self) -> (Vec<u8>, u16) {
         let (left, _) = self.template.split_at_mut(2);
         left.copy_from_slice(&Cache::get_random_id().as_slice());
         let qtype: u16 = u16::from(*(self.qty.choose(&mut rand::thread_rng()).unwrap()));
         let temp = qtype.to_be_bytes();
         self.template[self.qty_pos + 1] = temp[0];
         self.template[self.qty_pos + 2] = temp[1];
-        self.template.clone()
+        (self.template.clone(), qtype)
     }
 }
 
@@ -92,7 +92,7 @@ mod test {
                 assert!(false);
             }
         }
-        let data = cache.build_message();
+        let (data, qtype) = cache.build_message();
         assert_eq!(data.len(), cache.template.len());
     }
 }
