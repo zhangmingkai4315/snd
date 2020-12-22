@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use trust_dns_client::op::{Message, OpCode, ResponseCode};
-use trust_dns_client::rr::RecordType;
+use trust_dns_client::op::{Message};
+
 
 #[derive(Default)]
 struct QueryStatusStore {
@@ -60,13 +60,13 @@ enum ReportType {
     Color,
 }
 impl ReportType {
-    fn basic(report: &RunnerReport) -> String {
+    fn basic(_report: &RunnerReport) -> String {
         format!("basic output")
     }
-    fn json(report: &RunnerReport) -> String {
+    fn json(_report: &RunnerReport) -> String {
         format!("json output")
     }
-    fn color(report: &RunnerReport) -> String {
+    fn color(_report: &RunnerReport) -> String {
         format!("color output")
     }
 }

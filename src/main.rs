@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .target(Target::Stdout)
         .filter_level(LevelFilter::Info);
     builder.init();
-    let mut arg = Argument::from_args();
+    let arg = Argument::from_args();
     println!("{}", arg);
     Runner::new(arg);
     Ok(())

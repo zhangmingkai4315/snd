@@ -1,16 +1,16 @@
 use crate::arguments::Argument;
 use crate::cache::Cache;
 use crossbeam_channel::{bounded, Receiver, Sender};
-use futures::future::join_all;
+
 use governor::{Quota, RateLimiter};
 use nonzero_ext::*;
-use std::net::{SocketAddr, UdpSocket};
+use std::net::{UdpSocket};
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use trust_dns_client::op::Message;
 use trust_dns_client::proto::serialize::binary::BinDecodable;
-use trust_dns_client::udp::UdpClientConnection;
+
 
 pub struct Runner {
     arguments: Argument,
@@ -143,7 +143,7 @@ impl QueryWorker {
                             Ok(_) => {}
                         };
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         break;
                     }
                 };
@@ -179,7 +179,7 @@ struct QueryConsumer {
 impl QueryConsumer {
     fn new(arguments: Argument, receiver: Receiver<Message>) -> QueryConsumer {
         let thread_receiver = receiver.clone();
-        let thread = std::thread::spawn(move || for message in thread_receiver {});
+        let thread = std::thread::spawn(move || for _message in thread_receiver {});
 
         QueryConsumer {
             arguments,

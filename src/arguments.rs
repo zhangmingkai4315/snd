@@ -2,7 +2,7 @@ use std::fmt;
 use std::fmt::Formatter;
 use structopt::StructOpt;
 
-#[derive(Debug, Clone, StructOpt)]
+#[derive(Debug, Clone, Default, StructOpt)]
 #[structopt(name = "snd", about = "a dns traffic generator")]
 pub(crate) struct Argument {
     #[structopt(long = "debug")]
