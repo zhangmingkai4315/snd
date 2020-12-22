@@ -1,12 +1,9 @@
-#[macro_use]
-extern crate lazy_static;
 extern crate futures;
 extern crate leaky_bucket;
 extern crate tokio;
 
-#[macro_use]
-extern crate nonzero_ext;
 extern crate governor;
+extern crate nonzero_ext;
 extern crate rand;
 extern crate structopt;
 extern crate trust_dns_client;
@@ -16,6 +13,7 @@ extern crate crossbeam_channel;
 
 mod arguments;
 mod cache;
+mod report;
 mod runner;
 
 use arguments::Argument;
@@ -33,7 +31,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     builder.init();
     let mut arg = Argument::from_args();
     println!("{}", arg);
-    let runner = Runner::new(arg);
-    runner.run();
+    Runner::new(arg);
     Ok(())
 }

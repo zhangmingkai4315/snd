@@ -2,24 +2,21 @@ use crate::arguments::Argument;
 use crate::cache::Cache;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use futures::future::join_all;
-use futures::Future;
 use governor::{Quota, RateLimiter};
 use nonzero_ext::*;
-use std::error::Error;
-use std::iter::Product;
 use std::net::{SocketAddr, UdpSocket};
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
-use tokio::macros::support::thread_rng_n;
-use tokio::time::Duration;
-use trust_dns_client::client::ClientConnection;
+use std::thread::JoinHandle;
 use trust_dns_client::op::Message;
+use trust_dns_client::proto::serialize::binary::BinDecodable;
 use trust_dns_client::udp::UdpClientConnection;
 
 pub struct Runner {
     arguments: Argument,
     workers: Vec<QueryWorker>,
     producer: QueryProducer,
+    consumer: QueryConsumer,
 }
 
 impl Runner {
@@ -29,18 +26,28 @@ impl Runner {
         let (sender, receiver) = bounded(arguments.client);
         let receiver = Arc::new(Mutex::new(receiver));
         let origin_arguments = Arc::new(arguments.clone());
-        for i in 0..origin_arguments.client {
-            workers.push(QueryWorker::new(i, arguments.clone(), receiver.clone()));
-        }
+
         let producer = QueryProducer::new(arguments.clone(), sender.clone());
+
+        let (resultSender, resultReceiver) = bounded(arguments.client);
+        for i in 0..origin_arguments.client {
+            let resultSender = resultSender.clone();
+            workers.push(QueryWorker::new(
+                i,
+                arguments.clone(),
+                receiver.clone(),
+                resultSender,
+            ));
+        }
+
+        let consumer = QueryConsumer::new(arguments.clone(), resultReceiver);
         Runner {
             arguments,
             workers,
             producer,
+            consumer,
         }
     }
-
-    pub fn run(&self) {}
 }
 
 impl Drop for Runner {
@@ -50,13 +57,12 @@ impl Drop for Runner {
                 handler.join().expect("fail to join thread");
             }
         }
+        self.consumer.report();
     }
 }
 
 struct QueryProducer {
-    // argument: Argument,
     thread: std::thread::JoinHandle<()>,
-    // sender: std::sync::mpsc::Sender<Vec<u8>>
 }
 
 impl QueryProducer {
@@ -112,7 +118,12 @@ struct QueryWorker {
     read_thread: Option<std::thread::JoinHandle<()>>,
 }
 impl QueryWorker {
-    fn new(id: usize, arguments: Argument, receiver: Arc<Mutex<Receiver<Vec<u8>>>>) -> QueryWorker {
+    fn new(
+        id: usize,
+        arguments: Argument,
+        receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
+        resultSender: Sender<Message>,
+    ) -> QueryWorker {
         let rx = receiver.clone();
         let server_port = format!("{}:{}", arguments.server, arguments.port);
         let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
@@ -138,21 +149,17 @@ impl QueryWorker {
                 };
                 let mut buffer = [0u8; 1234];
                 match socket.recv(&mut buffer) {
-                    Ok(receive) => {
-                        println!("receive {:?}", buffer);
+                    Ok(bit_received) => {
+                        if let Ok(message) = Message::from_bytes(&buffer[..bit_received]) {
+                            resultSender.send(message);
+                        }
                     }
                     _ => {}
                 }
             }
-            info!("worker thread {} exit success", id)
+            info!("worker thread {} exit success", id);
+            drop(resultSender);
         });
-        // let read_thread = std::thread::spawn(move || {
-        //     loop {
-        //         let mut buffer = [0u8;1248];
-        //         read.read(&mut buffer[..]);
-        //     }
-        //     info!("worker thread {} exit success", id)
-        // });
         QueryWorker {
             id,
             arguments,
@@ -160,5 +167,28 @@ impl QueryWorker {
             write_thread: Some(thread),
             read_thread: None,
         }
+    }
+}
+
+struct QueryConsumer {
+    arguments: Argument,
+    receiver: Receiver<Message>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl QueryConsumer {
+    fn new(arguments: Argument, receiver: Receiver<Message>) -> QueryConsumer {
+        let thread_receiver = receiver.clone();
+        let thread = std::thread::spawn(move || for message in thread_receiver {});
+
+        QueryConsumer {
+            arguments,
+            receiver,
+            thread: Some(thread),
+        }
+    }
+
+    fn report(&self) {
+        println!("consumer print report...");
     }
 }
