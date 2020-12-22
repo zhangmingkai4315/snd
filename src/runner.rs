@@ -59,6 +59,7 @@ impl Drop for Runner {
                 handler.join().expect("fail to join thread");
             }
         }
+        self.report.set_end_time(std::time::SystemTime::now());
         self.report
             .set_producer_report((*self.producer.store.lock().unwrap()).clone());
         self.report
@@ -81,9 +82,12 @@ impl QueryProducer {
             if qps == 0 {
                 None
             } else {
-                Some(RateLimiter::direct(Quota::per_second(
-                    NonZeroU32::new(argument.qps as u32).expect("qps setting error"),
-                )))
+                Some(RateLimiter::direct(
+                    Quota::per_second(
+                        NonZeroU32::new(argument.qps as u32).expect("qps setting error"),
+                    )
+                    .allow_burst(NonZeroU32::new(1).unwrap()),
+                ))
             }
         };
         let mut current_counter: usize = 0;
@@ -104,7 +108,6 @@ impl QueryProducer {
                 }
                 if ready == true {
                     if current_counter != max_counter {
-                        println!("{}", current_counter);
                         current_counter = current_counter + 1;
                         let (data, qtype) = cache.build_message();
                         sender.send(data);
@@ -116,7 +119,7 @@ impl QueryProducer {
                     }
                 }
             }
-            info!("producer thread quit");
+            debug!("producer thread quit");
             drop(sender);
         });
         QueryProducer { store, thread }
@@ -148,7 +151,7 @@ impl QueryWorker {
             loop {
                 match rx.lock().unwrap().recv() {
                     Ok(data) => {
-                        println!("send {:?}", data.as_slice());
+                        debug!("send {:?}", data.as_slice());
                         match socket.send(data.as_slice()) {
                             Err(e) => {
                                 println!("send error : {}", e);
@@ -163,6 +166,7 @@ impl QueryWorker {
                 let mut buffer = [0u8; 1234];
                 match socket.recv(&mut buffer) {
                     Ok(bit_received) => {
+                        debug!("receive {:?}", &buffer[..bit_received]);
                         if let Ok(message) = Message::from_bytes(&buffer[..bit_received]) {
                             resultSender.send(message);
                         }
@@ -170,7 +174,7 @@ impl QueryWorker {
                     _ => {}
                 }
             }
-            info!("worker thread {} exit success", id);
+            debug!("worker thread {} exit success", id);
             drop(resultSender);
         });
         QueryWorker {

@@ -1,5 +1,8 @@
+use chrono::DateTime;
+use chrono::Local;
 use std::collections::HashMap;
 use trust_dns_client::op::Message;
+use trust_dns_client::rr::RecordType;
 
 #[derive(Default, Clone)]
 pub struct QueryStatusStore {
@@ -75,13 +78,70 @@ pub enum ReportType {
     Color,
 }
 impl ReportType {
-    fn basic(_report: &RunnerReport) -> String {
-        format!("basic output")
+    fn basic(report: &RunnerReport) -> String {
+        let mut query_type_map: Vec<_> = report
+            .producer_report
+            .as_ref()
+            .unwrap()
+            .query_type
+            .iter()
+            .collect();
+        query_type_map.sort_by_key(|a| a.0);
+        let query: Vec<_> = query_type_map
+            .iter()
+            .map(|a| format!("{} = {}", RecordType::from(*a.0).to_string(), a.1))
+            .collect();
+
+        let mut response_type_map: Vec<_> = report
+            .consumer_report
+            .as_ref()
+            .unwrap()
+            .query_type
+            .iter()
+            .collect();
+        response_type_map.sort_by_key(|a| a.0);
+        let response: Vec<_> = response_type_map
+            .iter()
+            .map(|a| {
+                let qtype = RecordType::from(*a.0).to_string();
+                let rate: f64 = {
+                    if let Some(query) =
+                        report.producer_report.as_ref().unwrap().query_type.get(a.0)
+                    {
+                        *a.1 as f64 * 100.0 / *query as f64
+                    } else {
+                        0.0
+                    }
+                };
+                format!("{} = {}({:.2}%)", qtype, a.1, rate)
+            })
+            .collect();
+        let start_time: DateTime<Local> = report.start.into();
+        let end_time: DateTime<Local> = report.end.unwrap().into();
+        format!(
+            "\
+------------ Report  -----------
+start time: {}\n\
+end time: {}\n\
+total cost: {:?}\n\
+total query: {} \n\t{}\n
+total response: {} \n\t{}\n
+response rate {:.2}%\n",
+            start_time.format("%+"),
+            end_time.format("%+"),
+            report.end.unwrap().duration_since(report.start).unwrap(),
+            report.producer_report.as_ref().unwrap().total,
+            query.join(","),
+            report.consumer_report.as_ref().unwrap().total,
+            response.join(","),
+            report.consumer_report.as_ref().unwrap().total as f64 * 100.0
+                / report.producer_report.as_ref().unwrap().total as f64,
+        )
     }
-    fn json(_report: &RunnerReport) -> String {
+    fn json(report: &RunnerReport) -> String {
         format!("json output")
     }
-    fn color(_report: &RunnerReport) -> String {
+    fn color(report: &RunnerReport) -> String {
         format!("color output")
     }
 }

@@ -40,23 +40,27 @@ impl fmt::Display for Argument {
             f,
             "
 start generate dns traffic from snd
------------- Basic  -----------
+------------ Basic Setting-----------
 domain: {}
 query type: {}
 server : {}/{}
 simulate client number: {}
 query per second(QPS): {}
 max query number: {},
------------- Advance -----------
+------------ Advance Setting-----------
 random port: {}
-turn off rd: {}
-\n",
+turn off rd: {}",
             self.domain,
             self.qty,
             self.server,
             self.port,
             self.client,
-            self.qps,
+            {
+                match self.qps {
+                    0 => "unlimited",
+                    _ => format!("{}", self.qps),
+                }
+            },
             self.max,
             self.id_random,
             self.nord,
