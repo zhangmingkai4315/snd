@@ -30,18 +30,18 @@ impl Runner {
 
         let producer = QueryProducer::new(arguments.clone(), sender.clone());
 
-        let (resultSender, resultReceiver) = bounded(arguments.client);
+        let (result_sender, result_receiver) = bounded(arguments.client);
         for i in 0..origin_arguments.client {
-            let resultSender = resultSender.clone();
+            let result_sender = result_sender.clone();
             workers.push(QueryWorker::new(
                 i,
                 arguments.clone(),
                 receiver.clone(),
-                resultSender,
+                result_sender,
             ));
         }
 
-        let consumer = QueryConsumer::new(arguments.clone(), resultReceiver);
+        let consumer = QueryConsumer::new(arguments.clone(), result_receiver);
         Runner {
             arguments,
             workers,
@@ -109,10 +109,10 @@ impl QueryProducer {
                 if ready == true {
                     if current_counter != max_counter {
                         current_counter = current_counter + 1;
-                        let (data, qtype) = cache.build_message();
+                        let (data, query_type) = cache.build_message();
                         sender.send(data);
                         if let Ok(mut v) = thread_store.lock() {
-                            v.update_query(qtype);
+                            v.update_query(query_type);
                         }
                     } else {
                         break;
@@ -138,7 +138,7 @@ impl QueryWorker {
         id: usize,
         arguments: Argument,
         receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
-        resultSender: Sender<Message>,
+        result_sender: Sender<Message>,
     ) -> QueryWorker {
         let rx = receiver.clone();
         let server_port = format!("{}:{}", arguments.server, arguments.port);
@@ -168,7 +168,7 @@ impl QueryWorker {
                     Ok(bit_received) => {
                         debug!("receive {:?}", &buffer[..bit_received]);
                         if let Ok(message) = Message::from_bytes(&buffer[..bit_received]) {
-                            resultSender.send(message);
+                            result_sender.send(message);
                         }
                     }
                     _ => {}
@@ -185,14 +185,14 @@ impl QueryWorker {
                     Ok(bit_received) => {
                         debug!("receive {:?}", &buffer[..bit_received]);
                         if let Ok(message) = Message::from_bytes(&buffer[..bit_received]) {
-                            resultSender.send(message);
+                            result_sender.send(message);
                         }
                     }
                     _ => {}
                 }
             }
             debug!("worker thread {} exit success", id);
-            drop(resultSender);
+            drop(result_sender);
         });
         QueryWorker {
             id,

@@ -15,50 +15,50 @@ pub struct QueryStatusStore {
 }
 
 impl QueryStatusStore {
-    pub fn update_query(&mut self, qtype: u16) {
+    pub fn update_query(&mut self, query_type: u16) {
         self.total = self.total + 1;
-        match self.query_type.get(&qtype) {
-            Some(v) => self.query_type.insert(qtype, v + 1),
-            _ => self.query_type.insert(qtype, 1),
+        match self.query_type.get(&query_type) {
+            Some(v) => self.query_type.insert(query_type, v + 1),
+            _ => self.query_type.insert(query_type, 1),
         };
     }
 
     pub fn update_response(&mut self, message: &Message) {
         self.total = self.total + 1;
-        let qtype = u16::from(message.queries()[0].query_type());
-        match self.query_type.get(&qtype) {
-            Some(v) => self.query_type.insert(qtype, v + 1),
-            _ => self.query_type.insert(qtype, 1),
+        let query_type = u16::from(message.queries()[0].query_type());
+        match self.query_type.get(&query_type) {
+            Some(v) => self.query_type.insert(query_type, v + 1),
+            _ => self.query_type.insert(query_type, 1),
         };
 
         for answer in message.answers() {
-            let qtype = u16::from(answer.record_type());
-            match self.answer_type.get(&qtype) {
-                Some(v) => self.answer_type.insert(qtype, v + 1),
-                _ => self.answer_type.insert(qtype, 1),
+            let query_type = u16::from(answer.record_type());
+            match self.answer_type.get(&query_type) {
+                Some(v) => self.answer_type.insert(query_type, v + 1),
+                _ => self.answer_type.insert(query_type, 1),
             };
         }
 
         for answer in message.additionals() {
-            let qtype = u16::from(answer.record_type());
-            match self.additional_type.get(&qtype) {
-                Some(v) => self.additional_type.insert(qtype, v + 1),
-                _ => self.additional_type.insert(qtype, 1),
+            let query_type = u16::from(answer.record_type());
+            match self.additional_type.get(&query_type) {
+                Some(v) => self.additional_type.insert(query_type, v + 1),
+                _ => self.additional_type.insert(query_type, 1),
             };
         }
 
         for answer in message.name_servers() {
-            let qtype = u16::from(answer.record_type());
-            match self.authority_type.get(&qtype) {
-                Some(v) => self.authority_type.insert(qtype, v + 1),
-                _ => self.authority_type.insert(qtype, 1),
+            let query_type = u16::from(answer.record_type());
+            match self.authority_type.get(&query_type) {
+                Some(v) => self.authority_type.insert(query_type, v + 1),
+                _ => self.authority_type.insert(query_type, 1),
             };
         }
 
-        let rcode = u16::from(message.response_code());
-        match self.reply_code.get(&rcode) {
-            Some(v) => self.reply_code.insert(rcode, v + 1),
-            _ => self.reply_code.insert(rcode, 1),
+        let r_code = u16::from(message.response_code());
+        match self.reply_code.get(&r_code) {
+            Some(v) => self.reply_code.insert(r_code, v + 1),
+            _ => self.reply_code.insert(r_code, 1),
         };
     }
 }
@@ -102,7 +102,6 @@ pub trait ReportOutput {
 
 pub enum ReportType {
     Basic,
-    JSON,
     Color,
 }
 impl ReportType {
@@ -132,7 +131,7 @@ impl ReportType {
         let response: Vec<_> = response_type_map
             .iter()
             .map(|a| {
-                let qtype = RecordType::from(*a.0).to_string();
+                let query_type = RecordType::from(*a.0).to_string();
                 let rate: f64 = {
                     if let Some(query) =
                         report.producer_report.as_ref().unwrap().query_type.get(a.0)
@@ -142,7 +141,7 @@ impl ReportType {
                         0.0
                     }
                 };
-                format!("{} = {}({:.2}%)", qtype, a.1, rate)
+                format!("{} = {}({:.2}%)", query_type, a.1, rate)
             })
             .collect();
 
@@ -158,7 +157,7 @@ impl ReportType {
         let answer_response: Vec<_> = answer_type_map
             .iter()
             .map(|a| {
-                let qtype = RecordType::from(*a.0).to_string();
+                let query_type = RecordType::from(*a.0).to_string();
                 let rate: f64 = {
                     if let Some(query) =
                         report.producer_report.as_ref().unwrap().query_type.get(a.0)
@@ -168,7 +167,7 @@ impl ReportType {
                         0.0
                     }
                 };
-                format!("{} = {}({:.2}%)", qtype, a.1, rate)
+                format!("{} = {}({:.2}%)", query_type, a.1, rate)
             })
             .collect();
 
@@ -184,7 +183,7 @@ impl ReportType {
         let additional_response: Vec<_> = additional_type_map
             .iter()
             .map(|a| {
-                let qtype = RecordType::from(*a.0).to_string();
+                let query_type = RecordType::from(*a.0).to_string();
                 let rate: f64 = {
                     if let Some(query) =
                         report.producer_report.as_ref().unwrap().query_type.get(a.0)
@@ -194,7 +193,7 @@ impl ReportType {
                         0.0
                     }
                 };
-                format!("{} = {}({:.2}%)", qtype, a.1, rate)
+                format!("{} = {}({:.2}%)", query_type, a.1, rate)
             })
             .collect();
 
@@ -210,7 +209,7 @@ impl ReportType {
         let authority_response: Vec<_> = authority_type_map
             .iter()
             .map(|a| {
-                let qtype = RecordType::from(*a.0).to_string();
+                let query_type = RecordType::from(*a.0).to_string();
                 let rate: f64 = {
                     if let Some(query) =
                         report.producer_report.as_ref().unwrap().query_type.get(a.0)
@@ -220,7 +219,7 @@ impl ReportType {
                         0.0
                     }
                 };
-                format!("{} = {}({:.2}%)", qtype, a.1, rate)
+                format!("{} = {}({:.2}%)", query_type, a.1, rate)
             })
             .collect();
 
@@ -256,21 +255,30 @@ Success Rate       : {:.2}%\n",
                 / report.producer_report.as_ref().unwrap().total as f64,
         )
     }
-    fn json(report: &RunnerReport) -> String {
-        format!("json output")
-    }
-    fn color(report: &RunnerReport) -> String {
-        format!("color output")
-    }
+    // fn color(report: &RunnerReport) -> String {
+    //     format!("colorful output")
+    // }
 }
 
 impl ReportOutput for ReportType {
     fn format(&self, report: &RunnerReport) -> String {
         match self {
             ReportType::Basic => ReportType::basic(report),
-            ReportType::JSON => ReportType::json(report),
-            ReportType::Color => ReportType::color(report),
+            // ReportType::Color => ReportType::color(report),
             _ => unimplemented!(),
         }
     }
+}
+
+
+fn format_result<T,S>(result_map: &HashMap<u16,usize>)->Vec<String>{
+    let mut to_tuple: Vec<_> = result_map.iter().collect();
+    to_tuple.sort_by_key(|a| a.0);
+    to_tuple
+        .iter()
+        .map(|a| {
+            let query_type = RecordType::from(*a.0).to_string();
+            format!("{} = {}", query_type, a.1)
+        })
+        .collect()
 }
