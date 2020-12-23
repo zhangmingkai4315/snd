@@ -145,83 +145,23 @@ impl ReportType {
             })
             .collect();
 
-        let mut answer_type_map: Vec<_> = report
+        let answer_result: String = format_result(&report
             .consumer_report
             .as_ref()
             .unwrap()
-            .answer_type
-            .iter()
-            .collect();
-        answer_type_map.sort_by_key(|a| a.0);
+            .answer_type).join(",");
 
-        let answer_response: Vec<_> = answer_type_map
-            .iter()
-            .map(|a| {
-                let query_type = RecordType::from(*a.0).to_string();
-                let rate: f64 = {
-                    if let Some(query) =
-                        report.producer_report.as_ref().unwrap().query_type.get(a.0)
-                    {
-                        *a.1 as f64 * 100.0 / *query as f64
-                    } else {
-                        0.0
-                    }
-                };
-                format!("{} = {}({:.2}%)", query_type, a.1, rate)
-            })
-            .collect();
-
-        let mut additional_type_map: Vec<_> = report
+        let additional_result: String = format_result(&report
             .consumer_report
             .as_ref()
             .unwrap()
-            .additional_type
-            .iter()
-            .collect();
-        answer_type_map.sort_by_key(|a| a.0);
+            .additional_type).join(",");
 
-        let additional_response: Vec<_> = additional_type_map
-            .iter()
-            .map(|a| {
-                let query_type = RecordType::from(*a.0).to_string();
-                let rate: f64 = {
-                    if let Some(query) =
-                        report.producer_report.as_ref().unwrap().query_type.get(a.0)
-                    {
-                        *a.1 as f64 * 100.0 / *query as f64
-                    } else {
-                        0.0
-                    }
-                };
-                format!("{} = {}({:.2}%)", query_type, a.1, rate)
-            })
-            .collect();
-
-        let mut authority_type_map: Vec<_> = report
+        let authority_result: String = format_result(&report
             .consumer_report
             .as_ref()
             .unwrap()
-            .authority_type
-            .iter()
-            .collect();
-        answer_type_map.sort_by_key(|a| a.0);
-
-        let authority_response: Vec<_> = authority_type_map
-            .iter()
-            .map(|a| {
-                let query_type = RecordType::from(*a.0).to_string();
-                let rate: f64 = {
-                    if let Some(query) =
-                        report.producer_report.as_ref().unwrap().query_type.get(a.0)
-                    {
-                        *a.1 as f64 * 100.0 / *query as f64
-                    } else {
-                        0.0
-                    }
-                };
-                format!("{} = {}({:.2}%)", query_type, a.1, rate)
-            })
-            .collect();
+            .authority_type).join(",");
 
         let start_time: DateTime<Local> = report.start.into();
         let end_time: DateTime<Local> = report.end.unwrap().into();
@@ -248,9 +188,9 @@ Success Rate       : {:.2}%\n",
             query.join(","),
             report.consumer_report.as_ref().unwrap().total,
             response.join(","),
-            answer_response.join(","),
-            authority_response.join(","),
-            additional_response.join(","),
+            answer_result,
+            authority_result,
+            additional_result,
             report.consumer_report.as_ref().unwrap().total as f64 * 100.0
                 / report.producer_report.as_ref().unwrap().total as f64,
         )
@@ -271,7 +211,7 @@ impl ReportOutput for ReportType {
 }
 
 
-fn format_result<T,S>(result_map: &HashMap<u16,usize>)->Vec<String>{
+fn format_result(result_map: &HashMap<u16,usize>)->Vec<String>{
     let mut to_tuple: Vec<_> = result_map.iter().collect();
     to_tuple.sort_by_key(|a| a.0);
     to_tuple
