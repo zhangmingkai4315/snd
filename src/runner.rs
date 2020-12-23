@@ -59,7 +59,6 @@ impl Drop for Runner {
                 handler.join().expect("fail to join thread");
             }
         }
-        self.report.set_end_time(std::time::SystemTime::now());
         self.report
             .set_producer_report((*self.producer.store.lock().unwrap()).clone());
         self.report
@@ -206,6 +205,7 @@ impl QueryWorker {
 
 struct QueryConsumer {
     arguments: Argument,
+    end: std::time::Instant,
     receiver: Receiver<Message>,
     thread: Option<JoinHandle<()>>,
     store: Arc<Mutex<QueryStatusStore>>,
@@ -219,7 +219,10 @@ impl QueryConsumer {
         let thread = std::thread::spawn(move || {
             for _message in thread_receiver {
                 match thread_store.lock() {
-                    Ok(mut v) => v.update_response(&_message),
+                    Ok(mut v) => {
+                        v.update_response(&_message);
+
+                    },
                     _ => {}
                 }
             }
@@ -227,6 +230,7 @@ impl QueryConsumer {
 
         QueryConsumer {
             arguments,
+            end: std::time::Instant::now(),
             receiver,
             thread: Some(thread),
             store,

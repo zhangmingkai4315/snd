@@ -7,6 +7,7 @@ use trust_dns_client::rr::RecordType;
 #[derive(Default, Clone)]
 pub struct QueryStatusStore {
     total: usize,
+    last_update: Option<std::time::SystemTime>,
     query_type: HashMap<u16, usize>,
     answer_type: HashMap<u16, usize>,
     authority_type: HashMap<u16, usize>,
@@ -60,6 +61,8 @@ impl QueryStatusStore {
             Some(v) => self.reply_code.insert(r_code, v + 1),
             _ => self.reply_code.insert(r_code, 1),
         };
+
+        self.last_update = Some(std::time::SystemTime::now());
     }
 }
 
@@ -164,10 +167,10 @@ impl ReportType {
             .authority_type).join(",");
 
         let start_time: DateTime<Local> = report.start.into();
-        let end_time: DateTime<Local> = report.end.unwrap().into();
+        let end_time: DateTime<Local> = report.consumer_report.as_ref().unwrap().last_update.unwrap().into();
         format!(
             "------------ Report -----------
->> Total Cost      : {:?} (+5s time wait)
+>> Total Cost      : {} (+5s time wait)
    Start Time      : {}
    End Time        : {}
 
@@ -181,7 +184,7 @@ impl ReportType {
    Additional Type : {}
 
 Success Rate       : {:.2}%\n",
-            report.end.unwrap().duration_since(report.start).unwrap(),
+            (end_time - start_time).to_string(),
             start_time.format("%+"),
             end_time.format("%+"),
             report.producer_report.as_ref().unwrap().total,
