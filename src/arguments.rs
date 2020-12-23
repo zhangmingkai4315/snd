@@ -39,17 +39,19 @@ impl fmt::Display for Argument {
         write!(
             f,
             "
-start generate dns traffic from snd
------------- Basic Setting-----------
-domain: {}
-query type: {}
-server : {}/{}
-simulate client number: {}
-query per second(QPS): {}
-max query number: {},
------------- Advance Setting-----------
-random port: {}
-turn off rd: {}",
+DNS Traffic Generator <SND>
+Version: {}
+------------ Basic Setting -----------
+Domain            : {}
+Query Type        : {}
+Server            : {}/{}
+Client Number     : {}
+Query Per Second  : {}
+Max Packet Number : {},
+------------ Advance Setting ---------
+Random Port       : {}
+Turn Off RD Bit   : {}\n",
+            env!("CARGO_PKG_VERSION"),
             self.domain,
             self.qty,
             self.server,
@@ -57,7 +59,7 @@ turn off rd: {}",
             self.client,
             {
                 match self.qps {
-                    0 => "unlimited",
+                    0 => "unlimited".to_owned(),
                     _ => format!("{}", self.qps),
                 }
             },

@@ -174,6 +174,23 @@ impl QueryWorker {
                     _ => {}
                 }
             }
+            let wait_start = std::time::Instant::now();
+            loop {
+                // wait for more seconds and return
+                if wait_start.elapsed() > std::time::Duration::from_secs(5) {
+                    break;
+                }
+                let mut buffer = [0u8; 1234];
+                match socket.recv(&mut buffer) {
+                    Ok(bit_received) => {
+                        debug!("receive {:?}", &buffer[..bit_received]);
+                        if let Ok(message) = Message::from_bytes(&buffer[..bit_received]) {
+                            resultSender.send(message);
+                        }
+                    }
+                    _ => {}
+                }
+            }
             debug!("worker thread {} exit success", id);
             drop(resultSender);
         });
@@ -202,7 +219,7 @@ impl QueryConsumer {
         let thread = std::thread::spawn(move || {
             for _message in thread_receiver {
                 match thread_store.lock() {
-                    Ok(mut v) => v.update(&_message),
+                    Ok(mut v) => v.update_response(&_message),
                     _ => {}
                 }
             }
