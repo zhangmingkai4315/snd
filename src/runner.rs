@@ -1,20 +1,22 @@
-use crate::arguments::Argument;
+use crate::arguments::{Argument,Protocol};
 use crate::cache::Cache;
 use crossbeam_channel::{bounded, Receiver, Sender};
 
 use crate::report::{QueryStatusStore, ReportType, RunnerReport};
 use governor::{Quota, RateLimiter};
 use nonzero_ext::*;
-use std::net::UdpSocket;
+use std::net::{UdpSocket, TcpStream};
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use trust_dns_client::op::Message;
 use trust_dns_client::proto::serialize::binary::BinDecodable;
+use std::io::{Write, Read};
+
 
 pub struct Runner {
     arguments: Argument,
-    workers: Vec<QueryWorker>,
+    workers: Vec<Box<dyn Worker>>,
     producer: QueryProducer,
     consumer: QueryConsumer,
     report: RunnerReport,
@@ -22,7 +24,7 @@ pub struct Runner {
 
 impl Runner {
     pub(crate) fn new(arguments: Argument) -> Runner {
-        let mut workers = Vec::new();
+        let mut workers: Vec<Box<dyn Worker>> = Vec::new();
         // let (sender, receiver) = channel();
         let (sender, receiver) = bounded(arguments.client);
         let receiver = Arc::new(Mutex::new(receiver));
@@ -33,12 +35,25 @@ impl Runner {
         let (result_sender, result_receiver) = bounded(arguments.client);
         for i in 0..origin_arguments.client {
             let result_sender = result_sender.clone();
-            workers.push(QueryWorker::new(
-                i,
-                arguments.clone(),
-                receiver.clone(),
-                result_sender,
-            ));
+            match arguments.protocol{
+                Protocol::UDP => {
+                    workers.push(Box::new(UDPWorker::new(
+                        i,
+                        arguments.clone(),
+                        receiver.clone(),
+                        result_sender,
+                    )));
+                },
+                Protocol::TCP => {
+                    workers.push(Box::new(TCPWorker::new(
+                        i,
+                        arguments.clone(),
+                        receiver.clone(),
+                        result_sender,
+                    )));
+                },
+            }
+
         }
 
         let consumer = QueryConsumer::new(arguments.clone(), result_receiver);
@@ -55,9 +70,10 @@ impl Runner {
 impl Drop for Runner {
     fn drop(&mut self) {
         for worker in &mut self.workers {
-            if let Some(handler) = worker.write_thread.take() {
-                handler.join().expect("fail to join thread");
-            }
+            worker.join();
+            // if let Some(handler) = worker.write_thread.take() {
+            //     handler.join().expect("fail to join thread");
+            // }
         }
         self.report
             .set_producer_report((*self.producer.store.lock().unwrap()).clone());
@@ -125,20 +141,32 @@ impl QueryProducer {
     }
 }
 
-struct QueryWorker {
+trait Worker{
+    fn join(&mut self);
+}
+
+struct UDPWorker {
     id: usize,
     arguments: Argument,
     receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
     write_thread: Option<std::thread::JoinHandle<()>>,
     read_thread: Option<std::thread::JoinHandle<()>>,
 }
-impl QueryWorker {
+impl Worker for UDPWorker{
+    fn join(&mut self) {
+        if let Some(handler) = self.write_thread.take() {
+            handler.join().expect("fail to join thread");
+        }
+    }
+}
+
+impl UDPWorker {
     fn new(
         id: usize,
         arguments: Argument,
         receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
         result_sender: Sender<Message>,
-    ) -> QueryWorker {
+    ) -> UDPWorker {
         let rx = receiver.clone();
         let server_port = format!("{}:{}", arguments.server, arguments.port);
         let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
@@ -193,7 +221,7 @@ impl QueryWorker {
             debug!("worker thread {} exit success", id);
             drop(result_sender);
         });
-        QueryWorker {
+        UDPWorker {
             id,
             arguments,
             receiver,
@@ -202,6 +230,93 @@ impl QueryWorker {
         }
     }
 }
+
+
+struct TCPWorker {
+    id: usize,
+    arguments: Argument,
+    receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
+    write_thread: Option<std::thread::JoinHandle<()>>,
+    read_thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Worker for TCPWorker{
+    fn join(&mut self) {
+        if let Some(handler) = self.write_thread.take() {
+            handler.join().expect("fail to join thread");
+        }
+    }
+}
+
+impl TCPWorker {
+    fn new(
+        id: usize,
+        arguments: Argument,
+        receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
+        result_sender: Sender<Message>,
+    ) -> TCPWorker {
+        let rx = receiver.clone();
+        let server_port = format!("{}:{}", arguments.server, arguments.port);
+        let mut stream = TcpStream::connect(server_port.clone()).expect(format!("unable to connect to server :{}", server_port).as_str());
+        stream.set_nonblocking(true).expect("set tcp unblock fail");
+
+        let thread = std::thread::spawn(move || {
+            loop {
+                match rx.lock().unwrap().recv() {
+                    Ok(data) => {
+                        debug!("send {:?}", data.as_slice());
+                        match stream.write(data.as_slice()) {
+                            Err(e) => {
+                                println!("send error : {}", e);
+                            }
+                            Ok(_) => {}
+                        };
+                    }
+                    Err(_e) => {
+                        break;
+                    }
+                };
+                let mut buffer = [0u8; 1234];
+                match stream.read(&mut buffer) {
+                    Ok(bit_received) => {
+                        debug!("receive {:?}", &buffer[..bit_received]);
+                        if let Ok(message) = Message::from_bytes(&buffer[..bit_received]) {
+                            result_sender.send(message);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let wait_start = std::time::Instant::now();
+            loop {
+                // wait for more seconds and return
+                if wait_start.elapsed() > std::time::Duration::from_secs(5) {
+                    break;
+                }
+                let mut buffer = [0u8; 1234];
+                match stream.read(&mut buffer) {
+                    Ok(bit_received) => {
+                        debug!("receive {:?}", &buffer[..bit_received]);
+                        if let Ok(message) = Message::from_bytes(&buffer[..bit_received]) {
+                            result_sender.send(message);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            debug!("worker thread {} exit success", id);
+            drop(result_sender);
+        });
+        TCPWorker {
+            id,
+            arguments,
+            receiver,
+            write_thread: Some(thread),
+            read_thread: None,
+        }
+    }
+}
+
 
 struct QueryConsumer {
     arguments: Argument,

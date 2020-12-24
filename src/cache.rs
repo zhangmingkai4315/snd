@@ -24,7 +24,7 @@ impl Cache {
                 query_type
             } else {
                 query_type.clear();
-                for x in argument.qty.clone().split(",") {
+                for x in argument.qty.clone().to_uppercase().split(",") {
                     match RecordType::from_str(x) {
                         Ok(v) => query_type.push(v),
                         _ => {}
