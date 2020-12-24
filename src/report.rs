@@ -148,26 +148,23 @@ impl ReportType {
             })
             .collect();
 
-        let answer_result: String = format_result(&report
-            .consumer_report
-            .as_ref()
-            .unwrap()
-            .answer_type).join(",");
+        let answer_result: String =
+            format_result(&report.consumer_report.as_ref().unwrap().answer_type).join(",");
 
-        let additional_result: String = format_result(&report
-            .consumer_report
-            .as_ref()
-            .unwrap()
-            .additional_type).join(",");
+        let additional_result: String =
+            format_result(&report.consumer_report.as_ref().unwrap().additional_type).join(",");
 
-        let authority_result: String = format_result(&report
-            .consumer_report
-            .as_ref()
-            .unwrap()
-            .authority_type).join(",");
+        let authority_result: String =
+            format_result(&report.consumer_report.as_ref().unwrap().authority_type).join(",");
 
         let start_time: DateTime<Local> = report.start.into();
-        let end_time: DateTime<Local> = report.consumer_report.as_ref().unwrap().last_update.unwrap().into();
+        let end_time: DateTime<Local> = report
+            .consumer_report
+            .as_ref()
+            .unwrap()
+            .last_update
+            .unwrap()
+            .into();
         format!(
             "------------ Report -----------
 >> Total Cost      : {} (+5s time wait)
@@ -213,8 +210,7 @@ impl ReportOutput for ReportType {
     }
 }
 
-
-fn format_result(result_map: &HashMap<u16,usize>)->Vec<String>{
+fn format_result(result_map: &HashMap<u16, usize>) -> Vec<String> {
     let mut to_tuple: Vec<_> = result_map.iter().collect();
     to_tuple.sort_by_key(|a| a.0);
     to_tuple

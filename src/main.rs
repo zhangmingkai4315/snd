@@ -24,13 +24,16 @@ use std::error::Error;
 use structopt::StructOpt;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut builder = Builder::from_default_env();
-    builder
-        .target(Target::Stdout)
-        .filter_level(LevelFilter::Info);
-    builder.init();
     let arg = Argument::from_args();
     println!("{}", arg);
+    let mut builder = Builder::from_default_env();
+    builder.target(Target::Stdout).filter_level({
+        match arg.debug {
+            true => LevelFilter::Debug,
+            false => LevelFilter::Info,
+        }
+    });
+    builder.init();
     Runner::new(arg);
     Ok(())
 }

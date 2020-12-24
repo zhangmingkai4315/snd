@@ -1,8 +1,8 @@
 use std::fmt;
-use std::fmt::{Formatter, Display};
-use structopt::StructOpt;
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use std::string::ParseError;
+use structopt::StructOpt;
 
 #[derive(Debug, Clone)]
 pub enum Protocol {
@@ -10,19 +10,19 @@ pub enum Protocol {
     TCP,
 }
 
-impl Default for Protocol{
+impl Default for Protocol {
     fn default() -> Self {
         Protocol::UDP
     }
 }
 
-impl FromStr for Protocol{
+impl FromStr for Protocol {
     type Err = String;
-    fn from_str(protocol: &str)->Result<Self, Self::Err>{
+    fn from_str(protocol: &str) -> Result<Self, Self::Err> {
         match protocol {
             "udp" | "UDP" => Ok(Protocol::UDP),
             "tcp" | "TCP" => Ok(Protocol::TCP),
-            _ => Err(format!("protocol {} not valid", protocol))
+            _ => Err(format!("protocol {} not valid", protocol)),
         }
     }
 }
@@ -41,7 +41,6 @@ pub(crate) struct Argument {
 
     #[structopt(long = "protocol", default_value = "UDP")]
     pub protocol: Protocol,
-
 
     #[structopt(short = "q", long = "qps", default_value = "10")]
     pub qps: usize,

@@ -1,4 +1,4 @@
-use crate::arguments::Argument;
+use crate::arguments::{Argument, Protocol};
 use rand::{seq::SliceRandom, Rng};
 use std::str::FromStr;
 
@@ -11,6 +11,7 @@ pub struct Cache {
     template: Vec<u8>,
     id_random: bool,
     qty_pos: usize,
+    protocol: Protocol,
     qty: Vec<RecordType>,
 }
 
@@ -50,13 +51,30 @@ impl Cache {
         // https://dnsflagday.net/2020/
         edns.set_max_payload(1232);
         message.set_edns(edns);
-        if let Ok(raw) = message.to_vec() {
-            Cache {
-                template: raw,
-                id_random: argument.id_random,
-                qty,
-                qty_pos,
-            }
+        let protocol = argument.protocol.clone();
+        if let Ok(mut raw) = message.to_vec() {
+            return match protocol {
+                Protocol::UDP => Cache {
+                    template: raw,
+                    id_random: argument.id_random,
+                    qty,
+                    qty_pos,
+                    protocol,
+                },
+                Protocol::TCP => {
+                    let size = raw.len();
+                    let mut raw_with_size: Vec<u8> =
+                        [((size & 0xff00) >> 8) as u8, (size & 0x00ff) as u8].to_vec();
+                    raw_with_size.append(&mut raw);
+                    Cache {
+                        template: raw_with_size,
+                        id_random: argument.id_random,
+                        qty,
+                        qty_pos,
+                        protocol,
+                    }
+                }
+            };
         } else {
             panic!("fail to encode to binary")
         }
@@ -66,12 +84,19 @@ impl Cache {
         vec![rng.gen::<u8>(), rng.gen::<u8>()]
     }
     pub fn build_message(&mut self) -> (Vec<u8>, u16) {
-        let (left, _) = self.template.split_at_mut(2);
-        left.copy_from_slice(&Cache::get_random_id().as_slice());
+        let offset = {
+            match self.protocol {
+                Protocol::TCP => 2,
+                Protocol::UDP => 0,
+            }
+        };
+        let random_id = Cache::get_random_id().clone();
+        self.template[offset] = random_id[0];
+        self.template[offset + 1] = random_id[1];
         let qtype: u16 = u16::from(*(self.qty.choose(&mut rand::thread_rng()).unwrap()));
         let temp = qtype.to_be_bytes();
-        self.template[self.qty_pos + 1] = temp[0];
-        self.template[self.qty_pos + 2] = temp[1];
+        self.template[self.qty_pos + 1 + offset] = temp[0];
+        self.template[self.qty_pos + 2 + offset] = temp[1];
         (self.template.clone(), qtype)
     }
 }
