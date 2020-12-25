@@ -1,7 +1,6 @@
 use std::fmt;
-use std::fmt::{Display, Formatter};
+use std::fmt::Formatter;
 use std::str::FromStr;
-use std::string::ParseError;
 use structopt::StructOpt;
 
 #[derive(Debug, Clone)]

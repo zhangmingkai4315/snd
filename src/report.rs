@@ -18,49 +18,38 @@ pub struct QueryStatusStore {
 impl QueryStatusStore {
     pub fn update_query(&mut self, query_type: u16) {
         self.total = self.total + 1;
-        match self.query_type.get(&query_type) {
-            Some(v) => self.query_type.insert(query_type, v + 1),
-            _ => self.query_type.insert(query_type, 1),
-        };
+        let count = self.query_type.entry(query_type).or_insert(0);
+        *count += 1;
     }
 
     pub fn update_response(&mut self, message: &Message) {
         self.total = self.total + 1;
         let query_type = u16::from(message.queries()[0].query_type());
-        match self.query_type.get(&query_type) {
-            Some(v) => self.query_type.insert(query_type, v + 1),
-            _ => self.query_type.insert(query_type, 1),
-        };
+
+        let count = self.query_type.entry(query_type).or_insert(0);
+        *count += 1;
 
         for answer in message.answers() {
             let query_type = u16::from(answer.record_type());
-            match self.answer_type.get(&query_type) {
-                Some(v) => self.answer_type.insert(query_type, v + 1),
-                _ => self.answer_type.insert(query_type, 1),
-            };
+            let count = self.answer_type.entry(query_type).or_insert(0);
+            *count += 1;
         }
 
         for answer in message.additionals() {
             let query_type = u16::from(answer.record_type());
-            match self.additional_type.get(&query_type) {
-                Some(v) => self.additional_type.insert(query_type, v + 1),
-                _ => self.additional_type.insert(query_type, 1),
-            };
+            let count = self.additional_type.entry(query_type).or_insert(0);
+            *count += 1;
         }
 
         for answer in message.name_servers() {
             let query_type = u16::from(answer.record_type());
-            match self.authority_type.get(&query_type) {
-                Some(v) => self.authority_type.insert(query_type, v + 1),
-                _ => self.authority_type.insert(query_type, 1),
-            };
+            let count = self.authority_type.entry(query_type).or_insert(0);
+            *count += 1;
         }
 
         let r_code = u16::from(message.response_code());
-        match self.reply_code.get(&r_code) {
-            Some(v) => self.reply_code.insert(r_code, v + 1),
-            _ => self.reply_code.insert(r_code, 1),
-        };
+        let count = self.reply_code.entry(r_code).or_insert(0);
+        *count += 1;
 
         self.last_update = Some(std::time::SystemTime::now());
     }
@@ -68,7 +57,6 @@ impl QueryStatusStore {
 
 pub struct RunnerReport {
     start: std::time::SystemTime,
-    end: Option<std::time::SystemTime>,
     producer_report: Option<QueryStatusStore>,
     consumer_report: Option<QueryStatusStore>,
 }
@@ -77,16 +65,9 @@ impl RunnerReport {
     pub fn new() -> RunnerReport {
         RunnerReport {
             start: std::time::SystemTime::now(),
-            end: None,
             producer_report: None,
             consumer_report: None,
         }
-    }
-    pub fn set_start_time(&mut self, begin_at: std::time::SystemTime) {
-        self.start = begin_at;
-    }
-    pub fn set_end_time(&mut self, end_at: std::time::SystemTime) {
-        self.end = Some(end_at);
     }
     pub fn set_producer_report(&mut self, store: QueryStatusStore) {
         self.producer_report = Some(store);
@@ -103,6 +84,7 @@ pub trait ReportOutput {
     fn format(&self, report: &RunnerReport) -> String;
 }
 
+#[allow(dead_code)]
 pub enum ReportType {
     Basic,
     Color,
@@ -168,7 +150,8 @@ impl ReportType {
             .unwrap()
             .into();
         let duration_second = (end_time - start_time).num_seconds();
-        let qps = report.consumer_report.as_ref().unwrap().total / duration_second as usize;
+        let qps = report.consumer_report.as_ref().unwrap().total as f64 / duration_second as f64;
+        println!("{}", duration_second as f64);
         format!(
             "------------ Report -----------
       Total Cost: {} (+time wait)
@@ -185,7 +168,7 @@ impl ReportType {
    Response Code: {}
 
    Success Rate : {:.2}%
-    Average QPS : {}",
+    Average QPS : {:.0}",
             (end_time - start_time).to_string(),
             start_time.format("%+"),
             end_time.format("%+"),
@@ -202,17 +185,16 @@ impl ReportType {
             qps,
         )
     }
-    // fn color(report: &RunnerReport) -> String {
-    //     format!("colorful output")
-    // }
+    fn color(_report: &RunnerReport) -> String {
+        unimplemented!()
+    }
 }
 
 impl ReportOutput for ReportType {
     fn format(&self, report: &RunnerReport) -> String {
         match self {
             ReportType::Basic => ReportType::basic(report),
-            // ReportType::Color => ReportType::color(report),
-            _ => unimplemented!(),
+            ReportType::Color => ReportType::color(report),
         }
     }
 }
