@@ -64,7 +64,7 @@ impl Runner {
 impl Drop for Runner {
     fn drop(&mut self) {
         for worker in &mut self.workers {
-            worker.join();
+            worker.block();
         }
         self.report
             .set_producer_report((*self.producer.store.lock().unwrap()).clone());
@@ -137,14 +137,14 @@ impl QueryProducer {
 }
 
 trait Worker {
-    fn join(&mut self);
+    fn block(&mut self);
 }
 
 struct UDPWorker {
     write_thread: Option<std::thread::JoinHandle<()>>,
 }
 impl Worker for UDPWorker {
-    fn join(&mut self) {
+    fn block(&mut self) {
         if let Some(handler) = self.write_thread.take() {
             handler.join().expect("fail to join thread");
         }
@@ -168,6 +168,7 @@ impl UDPWorker {
         let edns_size_local = arguments.edns_size as usize;
         let thread = std::thread::spawn(move || {
             loop {
+                // TODO: each thread has own producer?
                 match rx.lock().unwrap().recv() {
                     Ok(data) => {
                         debug!("send {:?}", data.as_slice());
@@ -179,18 +180,37 @@ impl UDPWorker {
                         break;
                     }
                 };
-                let mut buffer = vec![0u8; edns_size_local];
-                match socket.recv(&mut buffer) {
-                    Ok(bit_received) => {
-                        debug!("receive {:?}", &buffer[..bit_received]);
-                        if let Ok(message) = Message::from_bytes(&buffer[..bit_received]) {
-                            if let Err(e) = result_sender.send(message) {
-                                error!("send packet: {:?}", e);
-                            };
-                        }
+                let mut buffer = [0u8; 512];
+                if let Ok(size) = socket.recv(&mut buffer) {
+                    if let Ok(message) = Message::from_bytes(&buffer[..size]) {
+                        if let Err(e) = result_sender.send(message) {
+                            error!("send packet: {:?}", e);
+                        };
                     }
-                    _ => {}
                 }
+                // Ok(bit_received) => {
+                //     // all received data
+                //     if bit_received == 512 {
+                //         heap_alloc.extend_from_slice(&buffer);
+                //         continue
+                //     }
+                //     // less then 512 bite
+                //     if heap_alloc.len() == 0 {
+                //         // no heap allocated
+                //         if let Ok(message) = Message::from_bytes(&buffer[..bit_received]) {
+                //             if let Err(e) = result_sender.send(message) {
+                //                 error!("send packet: {:?}", e);
+                //             };
+                //         }
+                //     }else{
+                //         heap_alloc.extend_from_slice(&buffer);
+                //         if let Ok(message) = Message::from_bytes(&heap_alloc) {
+                //             if let Err(e) = result_sender.send(message) {
+                //                 error!("send packet: {:?}", e);
+                //             };
+                //         }
+                //     }
+                //     break;
             }
             let wait_start = std::time::Instant::now();
             loop {
@@ -198,11 +218,10 @@ impl UDPWorker {
                 if wait_start.elapsed() > std::time::Duration::from_secs(timeout) {
                     break;
                 }
-                let mut buffer = [0u8; 1234];
+                let mut buffer = vec![0u8; edns_size_local];
                 match socket.recv(&mut buffer) {
-                    Ok(bit_received) => {
-                        debug!("receive {:?}", &buffer[..bit_received]);
-                        if let Ok(message) = Message::from_bytes(&buffer[..bit_received]) {
+                    Ok(size) => {
+                        if let Ok(message) = Message::from_bytes(&buffer[..size]) {
                             if let Err(e) = result_sender.send(message) {
                                 error!("send packet: {:?}", e);
                             };
@@ -225,7 +244,7 @@ struct TCPWorker {
 }
 
 impl Worker for TCPWorker {
-    fn join(&mut self) {
+    fn block(&mut self) {
         if let Some(handler) = self.write_thread.take() {
             handler.join().expect("fail to join tcp thread");
         }
@@ -260,8 +279,9 @@ impl TCPWorker {
                             }
                             Ok(_) => {}
                         };
-                        let mut buffer = [0u8; 1234];
-                        match stream.read(&mut buffer) {
+                        let mut buffer = vec![];
+                        buffer.reserve(512);
+                        match stream.read_to_end(&mut buffer) {
                             Ok(bit_received) => {
                                 debug!("receive {:?}", &buffer[..bit_received]);
                                 // tcp data with two bite length

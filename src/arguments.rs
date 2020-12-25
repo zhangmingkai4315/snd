@@ -1,7 +1,9 @@
 use std::fmt;
-use std::fmt::Formatter;
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use structopt::StructOpt;
+use trust_dns_client::rr::{Name, RecordType};
+use validator::validate_ip;
 
 #[derive(Debug, Clone)]
 pub enum Protocol {
@@ -26,6 +28,50 @@ impl FromStr for Protocol {
     }
 }
 
+fn parse_server(value: &str) -> Result<String, String> {
+    let mut is_ip = false;
+    let mut is_domain = false;
+    if validate_ip(value) == true {
+        is_ip = true;
+    }
+    if let Ok(_) = Name::from_str(value) {
+        is_domain = true;
+    }
+    if (is_ip || is_domain) == false {
+        return Err(format!("{} is not ip or domain", value));
+    }
+    Ok(value.to_owned())
+}
+#[derive(Debug, Clone, Default)]
+pub struct DomainTypeVec(pub(crate) Vec<RecordType>);
+
+impl DomainTypeVec {
+    pub fn size(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl Display for DomainTypeVec {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut dtype_vec = vec![];
+        for x in &self.0 {
+            dtype_vec.push(x.to_string());
+        }
+        write!(f, "{}", dtype_vec.join(","))
+    }
+}
+
+fn parse_domain_type(value: &str) -> Result<DomainTypeVec, String> {
+    let mut type_vec = vec![];
+    for x in value.to_uppercase().split(",") {
+        match RecordType::from_str(x) {
+            Ok(v) => type_vec.push(v),
+            _ => return Err(format!("unknown type: {}", x)),
+        }
+    }
+    Ok(DomainTypeVec(type_vec))
+}
+
 #[derive(Debug, Clone, Default, StructOpt)]
 #[structopt(name = "snd", about = "a dns traffic generator")]
 pub(crate) struct Argument {
@@ -33,14 +79,16 @@ pub(crate) struct Argument {
         short = "s",
         long = "server",
         default_value = "8.8.8.8",
-        help = "the dns server for benchmark"
+        help = "the dns server for benchmark",
+        parse(try_from_str = parse_server),
     )]
     pub server: String,
     #[structopt(
         short = "p",
         long = "port",
         default_value = "53",
-        help = "the dns server port number"
+        help = "the dns server port number",
+        // validator = is_port,
     )]
     pub port: u16,
     #[structopt(
@@ -84,9 +132,11 @@ pub(crate) struct Argument {
         short = "t",
         long = "type",
         default_value = "A,SOA",
-        help = "dns query type [multi types supported]"
+        help = "dns query type [multi types supported]",
+        parse(try_from_str = parse_domain_type)
     )]
-    pub qty: String,
+    pub qty: DomainTypeVec,
+
     #[structopt(
         long = "timeout",
         default_value = "5",

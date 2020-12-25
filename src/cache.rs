@@ -19,19 +19,12 @@ pub struct Cache {
 impl Cache {
     pub(crate) fn new(argument: &Argument) -> Cache {
         // let domain = argument.domain.clone();
-        let mut query_type: Vec<RecordType> = vec![RecordType::A, RecordType::NS, RecordType::SOA];
+        let query_type: Vec<RecordType> = vec![RecordType::A];
         let qty = {
-            if argument.qty == "" {
+            if argument.qty.size() == 0 {
                 query_type
             } else {
-                query_type.clear();
-                for x in argument.qty.clone().to_uppercase().split(",") {
-                    match RecordType::from_str(x) {
-                        Ok(v) => query_type.push(v),
-                        _ => {}
-                    }
-                }
-                query_type
+                argument.qty.0.clone()
             }
         };
 

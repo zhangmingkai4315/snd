@@ -1,17 +1,14 @@
 extern crate chrono;
-extern crate futures;
 extern crate governor;
 extern crate leaky_bucket;
 extern crate nonzero_ext;
 extern crate rand;
 extern crate structopt;
-extern crate tokio;
 extern crate trust_dns_client;
+extern crate validator;
 #[macro_use]
 extern crate log;
 extern crate crossbeam_channel;
-// #[macro_use]
-// extern crate lazy_static;
 
 mod arguments;
 mod cache;
