@@ -202,7 +202,7 @@ impl UDPWorker {
             let wait_start = std::time::Instant::now();
             loop {
                 // wait for more seconds and return
-                if wait_start.elapsed() > std::time::Duration::from_secs(5) {
+                if wait_start.elapsed() > std::time::Duration::from_secs(arguments.timeout as u64) {
                     break;
                 }
                 let mut buffer = [0u8; 1234];

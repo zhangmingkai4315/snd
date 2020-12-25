@@ -171,7 +171,7 @@ impl ReportType {
         let qps = report.consumer_report.as_ref().unwrap().total / duration_second as usize;
         format!(
             "------------ Report -----------
-      Total Cost: {} (+5s time wait)
+      Total Cost: {} (+time wait)
       Start Time: {}
         End Time: {}
 
