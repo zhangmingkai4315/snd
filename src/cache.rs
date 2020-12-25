@@ -9,7 +9,7 @@ use trust_dns_client::proto::{
 
 pub struct Cache {
     template: Vec<u8>,
-    id_random: bool,
+    packet_id_number: u16,
     qty_pos: usize,
     protocol: Protocol,
     qty: Vec<RecordType>,
@@ -45,18 +45,24 @@ impl Cache {
         let qty_pos = 12 + name.len();
         query.set_name(name);
         message.add_query(query);
-        message.set_recursion_desired(!argument.nord);
-        let mut edns = Edns::default();
-        // set the max payload to 1232
-        // https://dnsflagday.net/2020/
-        edns.set_max_payload(1232);
-        message.set_edns(edns);
+        message.set_recursion_desired(!argument.disable_rd);
+        message.set_checking_disabled(argument.enable_cd);
+        if argument.disable_edns == true {
+            let mut edns = Edns::default();
+            edns.set_dnssec_ok(argument.enable_dnssec);
+            edns.set_max_payload(argument.edns_size);
+            // set the max payload to 1232
+            // https://dnsflagday.net/2020/
+            edns.set_max_payload(1232);
+            message.set_edns(edns);
+        }
+
         let protocol = argument.protocol.clone();
         if let Ok(mut raw) = message.to_vec() {
             return match protocol {
                 Protocol::UDP => Cache {
                     template: raw,
-                    id_random: argument.id_random,
+                    packet_id_number: argument.packet_id,
                     qty,
                     qty_pos,
                     protocol,
@@ -68,7 +74,7 @@ impl Cache {
                     raw_with_size.append(&mut raw);
                     Cache {
                         template: raw_with_size,
-                        id_random: argument.id_random,
+                        packet_id_number: argument.packet_id,
                         qty,
                         qty_pos,
                         protocol,
@@ -79,9 +85,9 @@ impl Cache {
             panic!("fail to encode to binary")
         }
     }
-    fn get_random_id() -> Vec<u8> {
+    fn get_random_id() -> [u8; 2] {
         let mut rng = rand::thread_rng();
-        vec![rng.gen::<u8>(), rng.gen::<u8>()]
+        [rng.gen::<u8>(), rng.gen::<u8>()]
     }
     pub fn build_message(&mut self) -> (Vec<u8>, u16) {
         let offset = {
@@ -90,7 +96,12 @@ impl Cache {
                 Protocol::UDP => 0,
             }
         };
-        let random_id = Cache::get_random_id().clone();
+        let random_id = {
+            match self.packet_id_number {
+                0 => Cache::get_random_id(),
+                _ => self.packet_id_number.to_be_bytes(),
+            }
+        };
         self.template[offset] = random_id[0];
         self.template[offset + 1] = random_id[1];
         let qtype: u16 = u16::from(*(self.qty.choose(&mut rand::thread_rng()).unwrap()));
