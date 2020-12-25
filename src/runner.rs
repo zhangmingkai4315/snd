@@ -165,6 +165,7 @@ impl UDPWorker {
             .expect("unable to connect to server");
         socket.set_nonblocking(true).expect("set udp unblock fail");
         let timeout = arguments.timeout as u64;
+        let edns_size_local = arguments.edns_size as usize;
         let thread = std::thread::spawn(move || {
             loop {
                 match rx.lock().unwrap().recv() {
@@ -178,7 +179,7 @@ impl UDPWorker {
                         break;
                     }
                 };
-                let mut buffer = [0u8; 1234];
+                let mut buffer = vec![0u8; edns_size_local];
                 match socket.recv(&mut buffer) {
                     Ok(bit_received) => {
                         debug!("receive {:?}", &buffer[..bit_received]);

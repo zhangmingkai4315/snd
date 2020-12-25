@@ -18,9 +18,9 @@ impl Default for Protocol {
 impl FromStr for Protocol {
     type Err = String;
     fn from_str(protocol: &str) -> Result<Self, Self::Err> {
-        match protocol {
-            "udp" | "UDP" => Ok(Protocol::UDP),
-            "tcp" | "TCP" => Ok(Protocol::TCP),
+        match protocol.to_uppercase().as_str() {
+            "UDP" => Ok(Protocol::UDP),
+            "TCP" => Ok(Protocol::TCP),
             _ => Err(format!("protocol {} not valid", protocol)),
         }
     }

@@ -10,6 +10,8 @@ extern crate trust_dns_client;
 #[macro_use]
 extern crate log;
 extern crate crossbeam_channel;
+// #[macro_use]
+// extern crate lazy_static;
 
 mod arguments;
 mod cache;
