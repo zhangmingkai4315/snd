@@ -144,10 +144,12 @@ impl ReportType {
                         0.0
                     }
                 };
-                format!("{} = {}({:.2}%)", query_type, a.1, rate)
+                format!("{}={}({:.2}%)", query_type, a.1, rate)
             })
             .collect();
 
+        let response_code: String =
+            format_code_result(&report.consumer_report.as_ref().unwrap().reply_code).join(",");
         let answer_result: String =
             format_result(&report.consumer_report.as_ref().unwrap().answer_type).join(",");
 
@@ -165,22 +167,25 @@ impl ReportType {
             .last_update
             .unwrap()
             .into();
+        let duration_second = (end_time - start_time).num_seconds();
+        let qps = report.consumer_report.as_ref().unwrap().total / duration_second as usize;
         format!(
             "------------ Report -----------
->> Total Cost      : {} (+5s time wait)
-   Start Time      : {}
-   End Time        : {}
+      Total Cost: {} (+5s time wait)
+      Start Time: {}
+        End Time: {}
 
->> Total Query     : {}
-   Question Type   : {}
+     Total Query: {}
+        Question: {}
+  Total Response: {}
+        Question: {}
+          Answer: {}
+       Authority: {}
+      Additional: {}
+   Response Code: {}
 
->> Total Response  : {}
-   Question Type   : {}
-   Answer Type     : {}
-   Authority Type  : {}
-   Additional Type : {}
-
-Success Rate       : {:.2}%\n",
+   Success Rate : {:.2}%
+    Average QPS : {}",
             (end_time - start_time).to_string(),
             start_time.format("%+"),
             end_time.format("%+"),
@@ -191,8 +196,10 @@ Success Rate       : {:.2}%\n",
             answer_result,
             authority_result,
             additional_result,
+            response_code,
             report.consumer_report.as_ref().unwrap().total as f64 * 100.0
                 / report.producer_report.as_ref().unwrap().total as f64,
+            qps,
         )
     }
     // fn color(report: &RunnerReport) -> String {
@@ -217,7 +224,21 @@ fn format_result(result_map: &HashMap<u16, usize>) -> Vec<String> {
         .iter()
         .map(|a| {
             let query_type = RecordType::from(*a.0).to_string();
-            format!("{} = {}", query_type, a.1)
+            format!("{}={}", query_type, a.1)
+        })
+        .collect()
+}
+
+fn format_code_result(result_map: &HashMap<u16, usize>) -> Vec<String> {
+    let mut to_tuple: Vec<_> = result_map.iter().collect();
+    to_tuple.sort_by_key(|a| a.0);
+    to_tuple
+        .iter()
+        .map(|a| {
+            let type_to_u8: [u8; 2] = [((*a.0 & 0xff00) >> 8) as u8, (*a.0 & 0x00ff) as u8];
+            let query_type =
+                trust_dns_client::op::ResponseCode::from(type_to_u8[0], type_to_u8[1]).to_string();
+            format!("{}={}", query_type, a.1)
         })
         .collect()
 }

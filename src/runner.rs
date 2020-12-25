@@ -256,12 +256,13 @@ impl TCPWorker {
         let server_port = format!("{}:{}", arguments.server, arguments.port);
 
         // stream.set_nonblocking(true).expect("set tcp unblock fail");
-
+        let mut stream = TcpStream::connect(server_port.clone())
+            .expect(format!("unable to connect to server :{}", server_port).as_str());
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(
+            arguments.timeout as u64,
+        )));
         let thread = std::thread::spawn(move || {
             loop {
-                // TODO should not be here, donot create each time.
-                let mut stream = TcpStream::connect(server_port.clone())
-                    .expect(format!("unable to connect to server :{}", server_port).as_str());
                 match rx.lock().unwrap().recv() {
                     Ok(data) => {
                         debug!("send {:?}", data.as_slice());
@@ -288,23 +289,6 @@ impl TCPWorker {
                     }
                 };
             }
-            // let wait_start = std::time::Instant::now();
-            // loop {
-            //     // wait for more seconds and return
-            //     if wait_start.elapsed() > std::time::Duration::from_secs(5) {
-            //         break;
-            //     }
-            //     let mut buffer = [0u8; 1234];
-            //     match stream.read(&mut buffer) {
-            //         Ok(bit_received) => {
-            //             debug!("receive {:?}", &buffer[..bit_received]);
-            //             if let Ok(message) = Message::from_bytes(&buffer[..bit_received]) {
-            //                 result_sender.send(message);
-            //             }
-            //         }
-            //         _ => {}
-            //     }
-            // }
             debug!("tcp worker thread {} exit success", id);
             drop(result_sender);
         });
