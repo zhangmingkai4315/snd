@@ -9,12 +9,18 @@ use validator::validate_ip;
 pub enum Protocol {
     UDP,
     TCP,
+    DOH,
 }
-
 impl Default for Protocol {
     fn default() -> Self {
         Protocol::UDP
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum DoHMethod {
+    Get,
+    Post,
 }
 
 impl FromStr for Protocol {
@@ -23,7 +29,25 @@ impl FromStr for Protocol {
         match protocol.to_uppercase().as_str() {
             "UDP" => Ok(Protocol::UDP),
             "TCP" => Ok(Protocol::TCP),
+            "DOH" => Ok(Protocol::DOH),
             _ => Err(format!("protocol {} not valid", protocol)),
+        }
+    }
+}
+
+impl Default for DoHMethod {
+    fn default() -> Self {
+        DoHMethod::Get
+    }
+}
+
+impl FromStr for DoHMethod {
+    type Err = String;
+    fn from_str(method: &str) -> Result<Self, Self::Err> {
+        match method.to_uppercase().as_str() {
+            "GET" => Ok(DoHMethod::Post),
+            "POST" => Ok(DoHMethod::Get),
+            _ => Err(format!("doh method {} not valid", method)),
         }
     }
 }
@@ -151,6 +175,20 @@ pub(crate) struct Argument {
     )]
     pub packet_id: u16,
 
+    #[structopt(
+        long = "doh-server-method",
+        default_value = "GET",
+        help = "doh http method[GET/POST]"
+    )]
+    pub doh_server_method: DoHMethod,
+
+    #[structopt(
+        long = "doh-server",
+        default_value = "https://dns.alidns.com/dns-query",
+        help = "doh server based RFC8484"
+    )]
+    pub doh_server: String,
+
     #[structopt(long = "disable-rd", help = "RD (recursion desired) bit in the query")]
     pub disable_rd: bool,
     #[structopt(long = "enable-cd", help = "CD (checking disabled) bit in the query")]
@@ -182,7 +220,7 @@ Version: {}
 ------------ Basic Setting -----------
             Domain: {}
         Query Type: {}
-            Server: {}/{}
+            Server: {}
 Transport Protocol: {:?}
      Client Number: {}
   Query Per Second: {}
@@ -197,8 +235,12 @@ Transport Protocol: {:?}
             env!("CARGO_PKG_VERSION"),
             self.domain,
             self.qty,
-            self.server,
-            self.port,
+            {
+                match self.protocol {
+                    Protocol::DOH => self.doh_server.clone(),
+                    _ => format!("{}/{}", self.server.clone(), self.port),
+                }
+            },
             self.protocol,
             self.client,
             {

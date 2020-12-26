@@ -1,9 +1,10 @@
-use crate::arguments::{Argument, Protocol};
+use crate::arguments::{Argument, DoHMethod, Protocol};
 use crate::cache::Cache;
-use crossbeam_channel::{bounded, Receiver, Sender};
-
 use crate::report::{QueryStatusStore, ReportType, RunnerReport};
+use base64;
+use crossbeam_channel::{bounded, Receiver, Sender};
 use governor::{Quota, RateLimiter};
+use reqwest::blocking::Client;
 use std::io::{Read, Write};
 use std::net::{TcpStream, UdpSocket};
 use std::num::NonZeroU32;
@@ -47,6 +48,11 @@ impl Runner {
                         result_sender,
                     )));
                 }
+                Protocol::DOH => workers.push(Box::new(DOHWorker::new(
+                    arguments.clone(),
+                    receiver.clone(),
+                    result_sender,
+                ))),
             }
         }
 
@@ -137,7 +143,7 @@ impl QueryProducer {
 }
 
 trait Worker {
-    fn block(&mut self);
+    fn block(&mut self) {}
 }
 
 struct UDPWorker {
@@ -146,7 +152,7 @@ struct UDPWorker {
 impl Worker for UDPWorker {
     fn block(&mut self) {
         if let Some(handler) = self.write_thread.take() {
-            handler.join().expect("fail to join thread");
+            handler.join().expect("fail to join doh thread");
         }
     }
 }
@@ -188,29 +194,6 @@ impl UDPWorker {
                         };
                     }
                 }
-                // Ok(bit_received) => {
-                //     // all received data
-                //     if bit_received == 512 {
-                //         heap_alloc.extend_from_slice(&buffer);
-                //         continue
-                //     }
-                //     // less then 512 bite
-                //     if heap_alloc.len() == 0 {
-                //         // no heap allocated
-                //         if let Ok(message) = Message::from_bytes(&buffer[..bit_received]) {
-                //             if let Err(e) = result_sender.send(message) {
-                //                 error!("send packet: {:?}", e);
-                //             };
-                //         }
-                //     }else{
-                //         heap_alloc.extend_from_slice(&buffer);
-                //         if let Ok(message) = Message::from_bytes(&heap_alloc) {
-                //             if let Err(e) = result_sender.send(message) {
-                //                 error!("send packet: {:?}", e);
-                //             };
-                //         }
-                //     }
-                //     break;
             }
             let wait_start = std::time::Instant::now();
             loop {
@@ -246,7 +229,7 @@ struct TCPWorker {
 impl Worker for TCPWorker {
     fn block(&mut self) {
         if let Some(handler) = self.write_thread.take() {
-            handler.join().expect("fail to join tcp thread");
+            handler.join().expect("fail to join doh thread");
         }
     }
 }
@@ -303,6 +286,71 @@ impl TCPWorker {
             drop(result_sender);
         });
         TCPWorker {
+            write_thread: Some(thread),
+        }
+    }
+}
+
+struct DOHWorker {
+    write_thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Worker for DOHWorker {
+    fn block(&mut self) {
+        if let Some(handler) = self.write_thread.take() {
+            handler.join().expect("fail to join doh thread");
+        }
+    }
+}
+
+impl DOHWorker {
+    fn new(
+        arguments: Argument,
+        receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
+        result_sender: Sender<Message>,
+    ) -> DOHWorker {
+        let rx = receiver.clone();
+        // let server_port = format!("{}:{}", arguments.server, arguments.port);
+        let url = arguments.doh_server.clone();
+        // stream.set_nonblocking(true).expect("set tcp unblock fail");
+        let client = Client::new();
+        let thread = std::thread::spawn(move || {
+            loop {
+                match rx.lock().unwrap().recv() {
+                    Ok(data) => {
+                        debug!("send {:?}", data.as_slice());
+                        let base64_data = base64::encode(data.as_slice());
+                        let length = data.len();
+                        let res = match arguments.doh_server_method {
+                            DoHMethod::Post => client
+                                .post(&url)
+                                .header("accept", "application/dns-message")
+                                .header("content-type", "application/dns-message")
+                                .body(base64_data),
+                            DoHMethod::Get => client
+                                .get(&format!("{}?dns={}", &url, base64_data))
+                                .header("accept", "application/dns-message")
+                                .header("content-length", length),
+                        };
+                        if let Ok(resp) = res.send() {
+                            if let Ok(buffer) = resp.bytes() {
+                                if let Ok(message) = Message::from_bytes(&buffer) {
+                                    if let Err(e) = result_sender.send(message) {
+                                        error!("send packet: {}", e)
+                                    };
+                                }
+                            }
+                        }
+                    }
+                    Err(_e) => {
+                        break;
+                    }
+                };
+            }
+            debug!("tcp worker thread exit success");
+            drop(result_sender);
+        });
+        DOHWorker {
             write_thread: Some(thread),
         }
     }

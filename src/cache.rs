@@ -53,7 +53,7 @@ impl Cache {
         let protocol = argument.protocol.clone();
         if let Ok(mut raw) = message.to_vec() {
             return match protocol {
-                Protocol::UDP => Cache {
+                Protocol::UDP | Protocol::DOH => Cache {
                     template: raw,
                     packet_id_number: argument.packet_id,
                     qty,
@@ -86,7 +86,7 @@ impl Cache {
         let offset = {
             match self.protocol {
                 Protocol::TCP => 2,
-                Protocol::UDP => 0,
+                Protocol::UDP | Protocol::DOH => 0,
             }
         };
         let random_id = {
@@ -110,7 +110,6 @@ mod test {
     use crate::arguments::Argument;
     use crate::cache::Cache;
     use trust_dns_client::proto::op::Message;
-
     #[test]
     fn test_cache() {
         let arg = Argument::default();
