@@ -147,11 +147,10 @@ impl ReportType {
             .as_ref()
             .unwrap()
             .last_update
-            .unwrap()
+            .expect("thread exit abnormal")
             .into();
-        let duration_second = (end_time - start_time).num_seconds();
-        let qps = report.consumer_report.as_ref().unwrap().total as f64 / duration_second as f64;
-        println!("{}", duration_second as f64);
+        let duration_second = (end_time - start_time).num_milliseconds() as f64 / 1000 as f64;
+        let qps = report.consumer_report.as_ref().unwrap().total as f64 / duration_second;
         format!(
             "------------ Report -----------
       Total Cost: {} (+time wait)

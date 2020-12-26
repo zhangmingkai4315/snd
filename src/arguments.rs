@@ -17,12 +17,6 @@ impl Default for Protocol {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum DoHMethod {
-    Get,
-    Post,
-}
-
 impl FromStr for Protocol {
     type Err = String;
     fn from_str(protocol: &str) -> Result<Self, Self::Err> {
@@ -35,6 +29,12 @@ impl FromStr for Protocol {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum DoHMethod {
+    Get,
+    Post,
+}
+
 impl Default for DoHMethod {
     fn default() -> Self {
         DoHMethod::Get
@@ -45,8 +45,8 @@ impl FromStr for DoHMethod {
     type Err = String;
     fn from_str(method: &str) -> Result<Self, Self::Err> {
         match method.to_uppercase().as_str() {
-            "GET" => Ok(DoHMethod::Post),
-            "POST" => Ok(DoHMethod::Get),
+            "POST" => Ok(DoHMethod::Post),
+            "GET" => Ok(DoHMethod::Get),
             _ => Err(format!("doh method {} not valid", method)),
         }
     }
@@ -237,7 +237,9 @@ Transport Protocol: {:?}
             self.qty,
             {
                 match self.protocol {
-                    Protocol::DOH => self.doh_server.clone(),
+                    Protocol::DOH => {
+                        format!("{}[{:?}]", self.doh_server.clone(), self.doh_server_method)
+                    }
                     _ => format!("{}/{}", self.server.clone(), self.port),
                 }
             },

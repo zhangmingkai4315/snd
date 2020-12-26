@@ -6,6 +6,8 @@ use crossbeam_channel::{bounded, Receiver, Sender};
 use governor::{Quota, RateLimiter};
 use reqwest::blocking::Client;
 use std::io::{Read, Write};
+// use net2::TcpStreamExt;
+// use net2::ext::TcpStreamExt;
 use std::net::{TcpStream, UdpSocket};
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
@@ -169,48 +171,30 @@ impl UDPWorker {
         socket
             .connect(server_port)
             .expect("unable to connect to server");
-        socket.set_nonblocking(true).expect("set udp unblock fail");
-        let timeout = arguments.timeout as u64;
+        // socket.set_nonblocking(true).expect("set udp unblock fail");
         let edns_size_local = arguments.edns_size as usize;
         let thread = std::thread::spawn(move || {
             loop {
                 // TODO: each thread has own producer?
-                match rx.lock().unwrap().recv() {
-                    Ok(data) => {
-                        debug!("send {:?}", data.as_slice());
-                        if let Err(e) = socket.send(data.as_slice()) {
-                            error!("send error : {}", e);
-                        };
-                    }
-                    Err(_e) => {
+                let data = match rx.lock().unwrap().recv() {
+                    Ok(data) => data,
+                    Err(_) => {
                         break;
                     }
                 };
-                let mut buffer = [0u8; 512];
+                debug!("send {:?}", data.as_slice());
+                if let Err(e) = socket.send(data.as_slice()) {
+                    error!("send error : {}", e);
+                };
+                let mut buffer = vec![0; edns_size_local];
                 if let Ok(size) = socket.recv(&mut buffer) {
                     if let Ok(message) = Message::from_bytes(&buffer[..size]) {
                         if let Err(e) = result_sender.send(message) {
                             error!("send packet: {:?}", e);
                         };
+                    } else {
+                        error!("parse dns message error");
                     }
-                }
-            }
-            let wait_start = std::time::Instant::now();
-            loop {
-                // wait for more seconds and return
-                if wait_start.elapsed() > std::time::Duration::from_secs(timeout) {
-                    break;
-                }
-                let mut buffer = vec![0u8; edns_size_local];
-                match socket.recv(&mut buffer) {
-                    Ok(size) => {
-                        if let Ok(message) = Message::from_bytes(&buffer[..size]) {
-                            if let Err(e) = result_sender.send(message) {
-                                error!("send packet: {:?}", e);
-                            };
-                        }
-                    }
-                    _ => {}
                 }
             }
             debug!("udp worker thread exit success");
@@ -242,44 +226,48 @@ impl TCPWorker {
     ) -> TCPWorker {
         let rx = receiver.clone();
         let server_port = format!("{}:{}", arguments.server, arguments.port);
-
         // stream.set_nonblocking(true).expect("set tcp unblock fail");
-        let mut stream = TcpStream::connect(server_port.clone())
-            .expect(format!("unable to connect to server :{}", server_port).as_str());
-        if let Err(e) = stream.set_read_timeout(Some(std::time::Duration::from_secs(
-            arguments.timeout as u64,
-        ))) {
-            error!("read_timeout {:?}", e);
-        }
         let thread = std::thread::spawn(move || {
+            let mut stream = TcpStream::connect(server_port.clone())
+                .expect(format!("unable to connect to server :{}", server_port).as_str());
+            if let Err(e) = stream.set_read_timeout(Some(std::time::Duration::from_secs(
+                arguments.timeout as u64,
+            ))) {
+                error!("read_timeout {:?}", e);
+            }
+            // if let Err(e) = stream.set_keepalive(Some(std::time::Duration::from_secs(60))){
+            //     error!("{}", e.to_string());
+            //     return
+            // }
             loop {
-                match rx.lock().unwrap().recv() {
-                    Ok(data) => {
-                        debug!("send {:?}", data.as_slice());
-                        match stream.write(data.as_slice()) {
-                            Err(e) => {
-                                println!("send error : {}", e);
-                            }
-                            Ok(_) => {}
-                        };
-                        let mut buffer = vec![];
-                        buffer.reserve(512);
-                        match stream.read_to_end(&mut buffer) {
-                            Ok(bit_received) => {
-                                debug!("receive {:?}", &buffer[..bit_received]);
-                                // tcp data with two bite length
-                                if let Ok(message) = Message::from_bytes(&buffer[2..bit_received]) {
-                                    if let Err(e) = result_sender.send(message) {
-                                        error!("send packet: {}", e)
-                                    };
-                                }
-                            }
-                            Err(err) => println!("receive error: {}", err),
-                        }
-                    }
-                    Err(_e) => {
+                let data = match rx.lock().unwrap().recv() {
+                    Ok(data) => data,
+                    Err(_) => {
                         break;
                     }
+                };
+                debug!("send {:?}", data.as_slice());
+                match stream.write(data.as_slice()) {
+                    Err(e) => {
+                        println!("send error : {}", e);
+                    }
+                    Ok(_) => {}
+                };
+                let mut buffer = vec![0; 1500];
+                match stream.read(&mut buffer) {
+                    Ok(bit_received) => {
+                        debug!("receive {:?}", &buffer[..bit_received]);
+                        if bit_received <= 2 {
+                            continue;
+                        }
+                        // tcp data with two bite length
+                        if let Ok(message) = Message::from_bytes(&buffer[2..bit_received]) {
+                            if let Err(e) = result_sender.send(message) {
+                                error!("send packet: {}", e)
+                            };
+                        }
+                    }
+                    Err(err) => println!("receive error: {}", err),
                 };
             }
             debug!("tcp worker thread exit success");
@@ -310,40 +298,41 @@ impl DOHWorker {
         result_sender: Sender<Message>,
     ) -> DOHWorker {
         let rx = receiver.clone();
-        // let server_port = format!("{}:{}", arguments.server, arguments.port);
         let url = arguments.doh_server.clone();
-        // stream.set_nonblocking(true).expect("set tcp unblock fail");
         let client = Client::new();
         let thread = std::thread::spawn(move || {
             loop {
-                match rx.lock().unwrap().recv() {
-                    Ok(data) => {
-                        debug!("send {:?}", data.as_slice());
-                        let base64_data = base64::encode(data.as_slice());
-                        let length = data.len();
-                        let res = match arguments.doh_server_method {
-                            DoHMethod::Post => client
-                                .post(&url)
-                                .header("accept", "application/dns-message")
-                                .header("content-type", "application/dns-message")
-                                .body(base64_data),
-                            DoHMethod::Get => client
-                                .get(&format!("{}?dns={}", &url, base64_data))
-                                .header("accept", "application/dns-message")
-                                .header("content-length", length),
-                        };
-                        if let Ok(resp) = res.send() {
-                            if let Ok(buffer) = resp.bytes() {
-                                if let Ok(message) = Message::from_bytes(&buffer) {
-                                    if let Err(e) = result_sender.send(message) {
-                                        error!("send packet: {}", e)
-                                    };
-                                }
-                            }
-                        }
-                    }
-                    Err(_e) => {
+                let data = match rx.lock().unwrap().recv() {
+                    Ok(data) => data,
+                    Err(_) => {
                         break;
+                    }
+                };
+                debug!("send {:?}", data.as_slice());
+
+                // let length = data.len();
+                let res = match arguments.doh_server_method {
+                    DoHMethod::Post => client
+                        .post(&url)
+                        .header("accept", "application/dns-message")
+                        .header("content-type", "application/dns-message")
+                        .body(data),
+                    DoHMethod::Get => {
+                        let base64_data = base64::encode(data.as_slice());
+                        client
+                            .get(&format!("{}?dns={}", &url, base64_data))
+                            .header("accept", "application/dns-message")
+                            .header("content-type", "application/dns-message")
+                    }
+                };
+                println!("{:?}", res);
+                if let Ok(resp) = res.send() {
+                    if let Ok(buffer) = resp.bytes() {
+                        if let Ok(message) = Message::from_bytes(&buffer) {
+                            if let Err(e) = result_sender.send(message) {
+                                error!("send packet: {}", e)
+                            };
+                        }
                     }
                 };
             }
