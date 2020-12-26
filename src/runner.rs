@@ -4,6 +4,7 @@ use crate::report::{QueryStatusStore, ReportType, RunnerReport};
 use base64;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use governor::{Quota, RateLimiter};
+// use net2::TcpBuilder;
 use reqwest::blocking::Client;
 use std::io::{Read, Write};
 // use net2::TcpStreamExt;
@@ -13,6 +14,7 @@ use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use trust_dns_client::op::Message;
 use trust_dns_client::proto::serialize::binary::BinDecodable;
+// use trust_dns_client::proto::tcp::TcpClientConnect;
 
 pub struct Runner {
     // arguments: Argument,
@@ -167,7 +169,8 @@ impl UDPWorker {
     ) -> UDPWorker {
         let rx = receiver.clone();
         let server_port = format!("{}:{}", arguments.server, arguments.port);
-        let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+        let source_ip_addr = format!("{}:0", arguments.source);
+        let socket = UdpSocket::bind(source_ip_addr).unwrap();
         socket
             .connect(server_port)
             .expect("unable to connect to server");
@@ -228,8 +231,13 @@ impl TCPWorker {
         let server_port = format!("{}:{}", arguments.server, arguments.port);
         // stream.set_nonblocking(true).expect("set tcp unblock fail");
         let thread = std::thread::spawn(move || {
+            // TcpStream::fr
+            // let builder = TcpBuilder::new_v4().expect("unable using tcp v4 resource");
+            // let source_ip_addr = format!("{}:0", arguments.source);
+            // let sock = TcpListener::bind(source_ip_addr).unwrap();
             let mut stream = TcpStream::connect(server_port.clone())
                 .expect(format!("unable to connect to server :{}", server_port).as_str());
+
             if let Err(e) = stream.set_read_timeout(Some(std::time::Duration::from_secs(
                 arguments.timeout as u64,
             ))) {

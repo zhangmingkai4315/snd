@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::{Display, Formatter};
+use std::net::IpAddr;
 use std::str::FromStr;
 use structopt::StructOpt;
 use trust_dns_client::rr::{Name, RecordType};
@@ -51,7 +52,12 @@ impl FromStr for DoHMethod {
         }
     }
 }
-
+fn parse_ip(value: &str) -> Result<IpAddr, String> {
+    match IpAddr::from_str(value) {
+        Ok(v) => Ok(v),
+        _ => Err(format!("source ip address {} not correct!", value)),
+    }
+}
 fn parse_server(value: &str) -> Result<String, String> {
     let mut is_ip = false;
     let mut is_domain = false;
@@ -96,7 +102,7 @@ fn parse_domain_type(value: &str) -> Result<DomainTypeVec, String> {
     Ok(DomainTypeVec(type_vec))
 }
 
-#[derive(Debug, Clone, Default, StructOpt)]
+#[derive(Debug, Clone, StructOpt)]
 #[structopt(name = "snd", about = "a dns traffic generator")]
 pub(crate) struct Argument {
     #[structopt(
@@ -208,6 +214,13 @@ pub(crate) struct Argument {
 
     #[structopt(long = "debug", help = "enable debug mode")]
     pub debug: bool,
+
+    #[structopt(long = "source-ip",
+        parse(try_from_str = parse_ip),
+        default_value = "0.0.0.0",
+        help = "set the source ip address")
+    ]
+    pub source: IpAddr,
 }
 
 impl fmt::Display for Argument {
