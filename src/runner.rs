@@ -1,16 +1,14 @@
+use crate::arguments::{Argument, Protocol};
+use crate::cache::Cache;
+use crate::report::{QueryStatusStore, ReportType, RunnerReport};
+use crate::workers::{doh::DOHWorker, tcp::TCPWorker, udp::UDPWorker, MessageOrHeader, Worker};
 use crossbeam_channel::{bounded, Receiver, Sender};
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
-use trust_dns_client::op::Message;
-use crate::arguments::{Argument, Protocol};
-use crate::cache::Cache;
-use crate::report::{QueryStatusStore, ReportType, RunnerReport};
-use crate::workers::{tcp::TCPWorker, udp::UDPWorker, doh::DOHWorker, Worker};
-
 
 pub struct Runner {
-    // arguments: Argument,
+    arguments: Argument,
     workers: Vec<Box<dyn Worker>>,
     producer: QueryProducer,
     consumer: QueryConsumer,
@@ -55,7 +53,7 @@ impl Runner {
 
         let consumer = QueryConsumer::new(result_receiver);
         Runner {
-            // arguments,
+            arguments,
             workers,
             producer,
             consumer,
@@ -73,7 +71,8 @@ impl Drop for Runner {
             .set_producer_report((*self.producer.store.lock().unwrap()).clone());
         self.report
             .set_consumer_report((*self.consumer.store.lock().unwrap()).clone());
-        self.report.report(ReportType::Basic);
+        self.report
+            .report(ReportType::Basic, self.arguments.clone());
     }
 }
 
@@ -144,7 +143,7 @@ struct QueryConsumer {
 }
 
 impl QueryConsumer {
-    fn new(receiver: Receiver<Message>) -> QueryConsumer {
+    fn new(receiver: Receiver<MessageOrHeader>) -> QueryConsumer {
         let thread_receiver = receiver.clone();
         let store = Arc::new(Mutex::new(QueryStatusStore::default()));
         let thread_store = store.clone();

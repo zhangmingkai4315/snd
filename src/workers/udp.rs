@@ -1,11 +1,10 @@
 use crossbeam_channel::{Receiver, Sender};
-use std::net::{ UdpSocket};
+use std::net::UdpSocket;
 use std::sync::{Arc, Mutex};
-use trust_dns_client::op::Message;
+use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
-
-use super::Worker;
+use super::{MessageOrHeader, Worker, HEADER_SIZE};
 use crate::arguments::Argument;
 
 pub struct UDPWorker {
@@ -23,17 +22,20 @@ impl UDPWorker {
     pub fn new(
         arguments: Argument,
         receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
-        result_sender: Sender<Message>,
+        result_sender: Sender<MessageOrHeader>,
     ) -> UDPWorker {
         let rx = receiver.clone();
         let server_port = format!("{}:{}", arguments.server, arguments.port);
         let source_ip_addr = format!("{}:0", arguments.source);
         let socket = UdpSocket::bind(source_ip_addr).unwrap();
+
         socket
             .connect(server_port)
             .expect("unable to connect to server");
         // socket.set_nonblocking(true).expect("set udp unblock fail");
         let edns_size_local = arguments.edns_size as usize;
+        let check_all_message = arguments.check_all_message;
+
         let thread = std::thread::spawn(move || {
             loop {
                 // TODO: each thread has own producer?
@@ -47,14 +49,27 @@ impl UDPWorker {
                 if let Err(e) = socket.send(data.as_slice()) {
                     error!("send error : {}", e);
                 };
-                let mut buffer = vec![0; edns_size_local];
-                if let Ok(size) = socket.recv(&mut buffer) {
-                    if let Ok(message) = Message::from_bytes(&buffer[..size]) {
-                        if let Err(e) = result_sender.send(message) {
-                            error!("send packet: {:?}", e);
-                        };
-                    } else {
-                        error!("parse dns message error");
+                if check_all_message == true {
+                    let mut buffer = vec![0; edns_size_local];
+                    if let Ok(size) = socket.recv(&mut buffer) {
+                        if let Ok(message) = Message::from_bytes(&buffer[..size]) {
+                            if let Err(e) = result_sender.send(MessageOrHeader::Message(message)) {
+                                error!("send packet: {:?}", e);
+                            };
+                        } else {
+                            error!("parse dns message error");
+                        }
+                    }
+                } else {
+                    let mut buffer = vec![0; HEADER_SIZE];
+                    if let Ok(size) = socket.recv(&mut buffer) {
+                        if let Ok(message) = Header::from_bytes(&buffer[..size]) {
+                            if let Err(e) = result_sender.send(MessageOrHeader::Header(message)) {
+                                error!("send packet: {:?}", e);
+                            };
+                        } else {
+                            error!("parse dns message error");
+                        }
                     }
                 }
             }

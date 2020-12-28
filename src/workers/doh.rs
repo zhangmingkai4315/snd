@@ -2,12 +2,11 @@ use base64;
 use crossbeam_channel::{Receiver, Sender};
 use reqwest::blocking::Client;
 use std::sync::{Arc, Mutex};
-use trust_dns_client::op::Message;
+use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
-use super::Worker;
+use super::{MessageOrHeader, Worker, HEADER_SIZE};
 use crate::arguments::{Argument, DoHMethod};
-
 
 pub struct DOHWorker {
     write_thread: Option<std::thread::JoinHandle<()>>,
@@ -25,11 +24,13 @@ impl DOHWorker {
     pub fn new(
         arguments: Argument,
         receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
-        result_sender: Sender<Message>,
+        result_sender: Sender<MessageOrHeader>,
     ) -> DOHWorker {
         let rx = receiver.clone();
         let url = arguments.doh_server.clone();
         let client = Client::new();
+        let check_all_message = arguments.check_all_message;
+
         let thread = std::thread::spawn(move || {
             loop {
                 let data = match rx.lock().unwrap().recv() {
@@ -55,13 +56,24 @@ impl DOHWorker {
                             .header("content-type", "application/dns-message")
                     }
                 };
-                println!("{:?}", res);
+
                 if let Ok(resp) = res.send() {
                     if let Ok(buffer) = resp.bytes() {
-                        if let Ok(message) = Message::from_bytes(&buffer) {
-                            if let Err(e) = result_sender.send(message) {
-                                error!("send packet: {}", e)
-                            };
+                        if check_all_message == true {
+                            if let Ok(message) = Message::from_bytes(&buffer) {
+                                if let Err(e) =
+                                    result_sender.send(MessageOrHeader::Message(message))
+                                {
+                                    error!("send packet: {}", e)
+                                };
+                            }
+                        } else {
+                            if let Ok(message) = Header::from_bytes(&buffer[0..HEADER_SIZE]) {
+                                if let Err(e) = result_sender.send(MessageOrHeader::Header(message))
+                                {
+                                    error!("send packet: {}", e)
+                                };
+                            }
                         }
                     }
                 };

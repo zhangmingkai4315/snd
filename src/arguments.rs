@@ -222,10 +222,11 @@ pub struct Argument {
     ]
     pub source: IpAddr,
 
-    #[structopt(long = "check-all-message",
-        help = "check all message body, default the response header only")
-    ]
-    pub check_header_only: bool,
+    #[structopt(
+        long = "check-all-message",
+        help = "check all message body [default only check response header]"
+    )]
+    pub check_all_message: bool,
 }
 
 impl fmt::Display for Argument {
@@ -282,7 +283,7 @@ Transport Protocol: {:?}
             self.disable_edns,
             self.edns_size,
             self.enable_dnssec,
-            self.check_header_only
+            self.check_all_message
         )
     }
 }

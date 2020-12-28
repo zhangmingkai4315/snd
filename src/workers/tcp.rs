@@ -1,12 +1,11 @@
 use crossbeam_channel::{Receiver, Sender};
 use std::io::{Read, Write};
-use std::net::{TcpStream};
+use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
-use trust_dns_client::op::Message;
+use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
-
-use super::Worker;
+use super::{MessageOrHeader, Worker, HEADER_SIZE};
 use crate::arguments::Argument;
 
 pub struct TCPWorker {
@@ -25,10 +24,12 @@ impl TCPWorker {
     pub fn new(
         arguments: Argument,
         receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
-        result_sender: Sender<Message>,
+        result_sender: Sender<MessageOrHeader>,
     ) -> TCPWorker {
         let rx = receiver.clone();
         let server_port = format!("{}:{}", arguments.server, arguments.port);
+        let check_all_message = arguments.check_all_message;
+
         // stream.set_nonblocking(true).expect("set tcp unblock fail");
         let thread = std::thread::spawn(move || {
             // TODO : tcp source ip setting
@@ -43,10 +44,6 @@ impl TCPWorker {
             ))) {
                 error!("read_timeout {:?}", e);
             }
-            // if let Err(e) = stream.set_keepalive(Some(std::time::Duration::from_secs(60))){
-            //     error!("{}", e.to_string());
-            //     return
-            // }
             loop {
                 let data = match rx.lock().unwrap().recv() {
                     Ok(data) => data,
@@ -61,22 +58,44 @@ impl TCPWorker {
                     }
                     Ok(_) => {}
                 };
-                let mut buffer = vec![0; 1500];
-                match stream.read(&mut buffer) {
-                    Ok(bit_received) => {
-                        debug!("receive {:?}", &buffer[..bit_received]);
-                        if bit_received <= 2 {
-                            continue;
+                if check_all_message == true {
+                    let mut buffer = vec![0; 1500];
+                    match stream.read(&mut buffer) {
+                        Ok(bit_received) => {
+                            debug!("receive {:?}", &buffer[..bit_received]);
+                            if bit_received <= 2 {
+                                continue;
+                            }
+                            // tcp data with two bite length
+                            if let Ok(message) = Message::from_bytes(&buffer[2..bit_received]) {
+                                if let Err(e) =
+                                    result_sender.send(MessageOrHeader::Message(message))
+                                {
+                                    error!("send packet: {}", e)
+                                };
+                            }
                         }
-                        // tcp data with two bite length
-                        if let Ok(message) = Message::from_bytes(&buffer[2..bit_received]) {
-                            if let Err(e) = result_sender.send(message) {
-                                error!("send packet: {}", e)
-                            };
+                        Err(err) => println!("receive error: {}", err),
+                    };
+                } else {
+                    let mut buffer = vec![0; HEADER_SIZE + 2];
+                    match stream.read(&mut buffer) {
+                        Ok(bit_received) => {
+                            debug!("receive {:?}", &buffer[..bit_received]);
+                            if bit_received <= 2 {
+                                continue;
+                            }
+                            // tcp data with two bite length
+                            if let Ok(message) = Header::from_bytes(&buffer[2..bit_received]) {
+                                if let Err(e) = result_sender.send(MessageOrHeader::Header(message))
+                                {
+                                    error!("send packet: {}", e)
+                                };
+                            }
                         }
-                    }
-                    Err(err) => println!("receive error: {}", err),
-                };
+                        Err(err) => println!("receive error: {}", err),
+                    };
+                }
             }
             debug!("tcp worker thread exit success");
             drop(result_sender);
