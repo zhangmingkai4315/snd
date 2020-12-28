@@ -17,6 +17,7 @@ mod arguments;
 mod cache;
 mod report;
 mod runner;
+mod workers;
 
 use arguments::Argument;
 use env_logger::{Builder, Target};

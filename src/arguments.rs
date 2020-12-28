@@ -104,7 +104,7 @@ fn parse_domain_type(value: &str) -> Result<DomainTypeVec, String> {
 
 #[derive(Debug, Clone, StructOpt)]
 #[structopt(name = "snd", about = "a dns traffic generator")]
-pub(crate) struct Argument {
+pub struct Argument {
     #[structopt(
         short = "s",
         long = "server",
@@ -221,6 +221,11 @@ pub(crate) struct Argument {
         help = "set the source ip address")
     ]
     pub source: IpAddr,
+
+    #[structopt(long = "check-all-message",
+        help = "check all message body, default the response header only")
+    ]
+    pub check_header_only: bool,
 }
 
 impl fmt::Display for Argument {
@@ -244,7 +249,8 @@ Transport Protocol: {:?}
     Turn On CD Bit: {},
        Enable EDNS: {},
          EDNS Size: {},
-     Enable DNSSEC: {}\n",
+     Enable DNSSEC: {},
+ Check All Message: {}\n",
             env!("CARGO_PKG_VERSION"),
             self.domain,
             self.qty,
@@ -275,7 +281,8 @@ Transport Protocol: {:?}
             self.enable_cd,
             self.disable_edns,
             self.edns_size,
-            self.enable_dnssec
+            self.enable_dnssec,
+            self.check_header_only
         )
     }
 }
