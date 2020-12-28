@@ -177,7 +177,7 @@ pub struct Argument {
     #[structopt(
         long = "packet-id",
         default_value = "0",
-        help = "fix the packet id or set to zero will random select a number"
+        help = "set to zero will random select a packet id"
     )]
     pub packet_id: u16,
 
@@ -224,7 +224,7 @@ pub struct Argument {
 
     #[structopt(
         long = "check-all-message",
-        help = "check all message body [default only check response header]"
+        help = "default only check response header"
     )]
     pub check_all_message: bool,
 }
