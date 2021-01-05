@@ -94,6 +94,7 @@ pub trait ReportOutput {
 pub enum ReportType {
     Basic,
     Color,
+    JSON,
 }
 
 struct BasicStats {
@@ -282,6 +283,9 @@ impl ReportType {
     fn color(_report: &RunnerReport) -> String {
         unimplemented!()
     }
+    fn json(_report: &RunnerReport) -> String{
+        unimplemented!()
+    }
 }
 
 impl ReportOutput for ReportType {
@@ -289,6 +293,7 @@ impl ReportOutput for ReportType {
         match self {
             ReportType::Basic => ReportType::basic(report, arguments),
             ReportType::Color => ReportType::color(report),
+            ReportType::JSON => ReportType::json(report),
         }
     }
 }

@@ -38,7 +38,7 @@ impl UDPWorker {
 
         let thread = std::thread::spawn(move || {
             loop {
-                // TODO: each thread has own producer?
+                // TODO: how about each thread has own producer?
                 let data = match rx.lock().unwrap().recv() {
                     Ok(data) => data,
                     Err(_) => {
@@ -49,6 +49,7 @@ impl UDPWorker {
                 if let Err(e) = socket.send(data.as_slice()) {
                     error!("send error : {}", e);
                 };
+
                 if check_all_message == true {
                     let mut buffer = vec![0; edns_size_local];
                     if let Ok(size) = socket.recv(&mut buffer) {

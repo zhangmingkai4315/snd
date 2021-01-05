@@ -58,43 +58,34 @@ impl TCPWorker {
                     }
                     Ok(_) => {}
                 };
+                let mut length = vec![0u8;2];
+                if let Err(_e) = stream.read_exact(&mut length){
+                    continue
+                };
+                let size = (length[0] as usize) << 8  |  length[1] as usize;
+                let mut data = vec![0; size ];
+                if let Err(e) = stream.read_exact(&mut data) {
+                    debug!("receive error: {}", e.to_string())
+                }
                 if check_all_message == true {
-                    let mut buffer = vec![0; 1500];
-                    match stream.read(&mut buffer) {
-                        Ok(bit_received) => {
-                            debug!("receive {:?}", &buffer[..bit_received]);
-                            if bit_received <= 2 {
-                                continue;
-                            }
-                            // tcp data with two bite length
-                            if let Ok(message) = Message::from_bytes(&buffer[2..bit_received]) {
-                                if let Err(e) =
-                                    result_sender.send(MessageOrHeader::Message(message))
-                                {
-                                    error!("send packet: {}", e)
-                                };
-                            }
-                        }
-                        Err(err) => println!("receive error: {}", err),
-                    };
+                    if let Ok(message) = Message::from_bytes(data.as_slice()) {
+                        if let Err(e) =
+                            result_sender.send(MessageOrHeader::Message(message))
+                        {
+                            error!("send packet: {}", e.to_string())
+                        };
+                    }
                 } else {
-                    let mut buffer = vec![0; HEADER_SIZE + 2];
-                    match stream.read(&mut buffer) {
-                        Ok(bit_received) => {
-                            debug!("receive {:?}", &buffer[..bit_received]);
-                            if bit_received <= 2 {
-                                continue;
-                            }
-                            // tcp data with two bite length
-                            if let Ok(message) = Header::from_bytes(&buffer[2..bit_received]) {
-                                if let Err(e) = result_sender.send(MessageOrHeader::Header(message))
-                                {
-                                    error!("send packet: {}", e)
-                                };
-                            }
+                    if let Ok(message) = Header::from_bytes(&data[0..HEADER_SIZE]) {
+                        let code = message.response_code();
+                        if code != trust_dns_client::proto::op::ResponseCode::NoError.low(){
+                            println!("{} --- {:?}", size, message)
                         }
-                        Err(err) => println!("receive error: {}", err),
-                    };
+                        if let Err(e) = result_sender.send(MessageOrHeader::Header(message))
+                        {
+                            error!("send packet: {}", e.to_string())
+                        };
+                    }
                 }
             }
             debug!("tcp worker thread exit success");
