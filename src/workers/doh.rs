@@ -2,6 +2,7 @@ use base64;
 use crossbeam_channel::{Receiver, Sender};
 use reqwest::blocking::Client;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
@@ -56,21 +57,24 @@ impl DOHWorker {
                             .header("content-type", "application/dns-message")
                     }
                 };
-
+                let start = Instant::now();
                 if let Ok(resp) = res.send() {
                     if let Ok(buffer) = resp.bytes() {
                         if check_all_message == true {
                             if let Ok(message) = Message::from_bytes(&buffer) {
-                                if let Err(e) =
-                                    result_sender.send(MessageOrHeader::Message(message))
-                                {
+                                if let Err(e) = result_sender.send(MessageOrHeader::Message((
+                                    message,
+                                    start.elapsed().as_secs_f64(),
+                                ))) {
                                     error!("send packet: {}", e)
                                 };
                             }
                         } else {
                             if let Ok(message) = Header::from_bytes(&buffer[0..HEADER_SIZE]) {
-                                if let Err(e) = result_sender.send(MessageOrHeader::Header(message))
-                                {
+                                if let Err(e) = result_sender.send(MessageOrHeader::Header((
+                                    message,
+                                    start.elapsed().as_secs_f64(),
+                                ))) {
                                     error!("send packet: {}", e)
                                 };
                             }

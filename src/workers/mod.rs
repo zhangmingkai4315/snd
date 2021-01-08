@@ -6,8 +6,9 @@ pub trait Worker {
 const HEADER_SIZE: usize = 12;
 
 pub enum MessageOrHeader {
-    Message(Message),
-    Header(Header),
+    Message((Message, f64)),
+    Header((Header, f64)),
+    End,
 }
 
 pub mod doh;

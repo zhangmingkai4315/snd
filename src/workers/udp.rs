@@ -1,11 +1,11 @@
+use super::{MessageOrHeader, Worker, HEADER_SIZE};
+use crate::arguments::Argument;
 use crossbeam_channel::{Receiver, Sender};
 use std::net::UdpSocket;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
-
-use super::{MessageOrHeader, Worker, HEADER_SIZE};
-use crate::arguments::Argument;
 
 pub struct UDPWorker {
     write_thread: Option<std::thread::JoinHandle<()>>,
@@ -46,6 +46,7 @@ impl UDPWorker {
                     }
                 };
                 debug!("send {:?}", data.as_slice());
+                let start = Instant::now();
                 if let Err(e) = socket.send(data.as_slice()) {
                     error!("send error : {}", e);
                 };
@@ -54,7 +55,10 @@ impl UDPWorker {
                     let mut buffer = vec![0; edns_size_local];
                     if let Ok(size) = socket.recv(&mut buffer) {
                         if let Ok(message) = Message::from_bytes(&buffer[..size]) {
-                            if let Err(e) = result_sender.send(MessageOrHeader::Message(message)) {
+                            if let Err(e) = result_sender.send(MessageOrHeader::Message((
+                                message,
+                                start.elapsed().as_secs_f64(),
+                            ))) {
                                 error!("send packet: {:?}", e);
                             };
                         } else {
@@ -65,7 +69,10 @@ impl UDPWorker {
                     let mut buffer = vec![0; HEADER_SIZE];
                     if let Ok(size) = socket.recv(&mut buffer) {
                         if let Ok(message) = Header::from_bytes(&buffer[..size]) {
-                            if let Err(e) = result_sender.send(MessageOrHeader::Header(message)) {
+                            if let Err(e) = result_sender.send(MessageOrHeader::Header((
+                                message,
+                                start.elapsed().as_secs_f64(),
+                            ))) {
                                 error!("send packet: {:?}", e);
                             };
                         } else {

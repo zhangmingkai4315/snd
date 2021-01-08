@@ -2,6 +2,7 @@ use crossbeam_channel::{Receiver, Sender};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
@@ -52,37 +53,41 @@ impl TCPWorker {
                     }
                 };
                 debug!("send {:?}", data.as_slice());
+                let start = Instant::now();
                 match stream.write(data.as_slice()) {
                     Err(e) => {
                         println!("send error : {}", e);
                     }
                     Ok(_) => {}
                 };
-                let mut length = vec![0u8;2];
-                if let Err(_e) = stream.read_exact(&mut length){
-                    continue
+                let mut length = vec![0u8; 2];
+                if let Err(_e) = stream.read_exact(&mut length) {
+                    continue;
                 };
-                let size = (length[0] as usize) << 8  |  length[1] as usize;
-                let mut data = vec![0; size ];
+                let size = (length[0] as usize) << 8 | length[1] as usize;
+                let mut data = vec![0; size];
                 if let Err(e) = stream.read_exact(&mut data) {
                     debug!("receive error: {}", e.to_string())
                 }
                 if check_all_message == true {
                     if let Ok(message) = Message::from_bytes(data.as_slice()) {
-                        if let Err(e) =
-                            result_sender.send(MessageOrHeader::Message(message))
-                        {
+                        if let Err(e) = result_sender.send(MessageOrHeader::Message((
+                            message,
+                            start.elapsed().as_secs_f64(),
+                        ))) {
                             error!("send packet: {}", e.to_string())
                         };
                     }
                 } else {
                     if let Ok(message) = Header::from_bytes(&data[0..HEADER_SIZE]) {
                         let code = message.response_code();
-                        if code != trust_dns_client::proto::op::ResponseCode::NoError.low(){
+                        if code != trust_dns_client::proto::op::ResponseCode::NoError.low() {
                             println!("{} --- {:?}", size, message)
                         }
-                        if let Err(e) = result_sender.send(MessageOrHeader::Header(message))
-                        {
+                        if let Err(e) = result_sender.send(MessageOrHeader::Header((
+                            message,
+                            start.elapsed().as_secs_f64(),
+                        ))) {
                             error!("send packet: {}", e.to_string())
                         };
                     }
