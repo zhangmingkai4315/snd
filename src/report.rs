@@ -312,14 +312,14 @@ impl ReportType {
         Question: {}
   Total Response: {}
    Response Code: {}
-   Success Rate : {:.2}%
-    Average QPS : {:.0}
-   Min Latency  : {:?}
-   Max Latency  : {:?}
-  Mean Latency  : {:?}
-   99% Latency  : {:?}
-   90% Latency  : {:?}
-   50% Latency  : {:?}",
+    Success Rate: {:.2}%
+     Average QPS: {:.0}
+     Min Latency: {:?}
+     Max Latency: {:?}
+    Mean Latency: {:?}
+     99% Latency: {:?}
+     90% Latency: {:?}
+     50% Latency: {:?}",
             (basic_info.end_time - basic_info.start_time).to_string(),
             basic_info.start_time.format("%+"),
             basic_info.end_time.format("%+"),
