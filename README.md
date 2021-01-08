@@ -5,7 +5,6 @@ you can set almost every bit of the packet using arguments.
 
 ### 1. Usage
 
-
 ```
 snd 0.1.0
 a dns traffic generator
@@ -84,4 +83,37 @@ and no json style support.
 
 ```
 snd -m 20 -q 5 -d google.com -t NS --protocol DOH --enable-dnssec --debug --doh-server=https://cloudflare-dns.com/dns-query
+```
+
+
+### 2. Load Test 
+
+Test Environments is a mac mini, install a local dns server for test. If you set up the environment at split dns server and snd load generator,
+maybe can get much higher qps number.
+
+```
+Mac mini (2018)
+3 GHz 6 Core Intel Core i5
+32 GB 2667 MHz DDR4
+DNS Server run at 127.0.0.1 / unbound 
+```
+
+
+```
+------------   Report   --------------
+     Total Cost : PT7.533013S (+time wait)
+     Start Time : 2021-01-08T21:30:42.674911+08:00
+       End Time : 2021-01-08T21:30:50.207924+08:00
+    Total Query : 1000000
+       Question : NS = 1000000
+ Total Response : 1000000
+  Response Code : No Error=1000000
+   Success Rate : 100.00%
+    Average QPS : 132749
+    Min Latency : 18.025µs
+    Max Latency : 100.793625ms
+   Mean Latency : 55.011µs
+    99% Latency : 86.39µs
+    90% Latency : 64.415µs
+    50% Latency : 52.762µs
 ```

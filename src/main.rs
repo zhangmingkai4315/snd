@@ -12,9 +12,11 @@ extern crate validator;
 #[macro_use]
 extern crate log;
 extern crate crossbeam_channel;
+// extern crate stream_histogram;
 
 mod arguments;
 mod cache;
+mod histogram;
 mod report;
 mod runner;
 mod workers;

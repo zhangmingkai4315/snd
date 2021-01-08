@@ -1,10 +1,12 @@
 use crate::arguments::Argument;
-use crate::workers::MessageOrHeader;
 use chrono::DateTime;
 use chrono::Local;
 use std::collections::HashMap;
 use trust_dns_client::op::ResponseCode;
 use trust_dns_client::rr::RecordType;
+// use crate::histogram::{HistogramReport};
+use crate::histogram::HistogramReport;
+use trust_dns_client::op::{Header, Message};
 
 #[derive(Default, Clone)]
 pub struct QueryStatusStore {
@@ -15,46 +17,66 @@ pub struct QueryStatusStore {
     authority_type: HashMap<u16, usize>,
     additional_type: HashMap<u16, usize>,
     reply_code: HashMap<u8, usize>,
+    report: Option<HistogramReport>,
 }
 
 impl QueryStatusStore {
+    pub fn new() -> QueryStatusStore {
+        QueryStatusStore {
+            total: 0,
+            last_update: None,
+            query_type: Default::default(),
+            answer_type: Default::default(),
+            authority_type: Default::default(),
+            additional_type: Default::default(),
+            reply_code: Default::default(),
+            report: None,
+        }
+    }
     pub fn update_query(&mut self, query_type: u16) {
         self.total = self.total + 1;
         let count = self.query_type.entry(query_type).or_insert(0);
         *count += 1;
     }
-
-    pub fn update_response(&mut self, message: &MessageOrHeader) {
-        self.total = self.total + 1;
+    pub fn update_histogram_report(&mut self, report: Option<HistogramReport>) {
+        self.report = report;
+    }
+    pub fn update_response_from_header(&mut self, header: &Header) {
+        // self.total = self.total + 1;
         // only for message type
-        if let MessageOrHeader::Message(message) = message {
-            let query_type = u16::from(message.queries()[0].query_type());
-            let count = self.query_type.entry(query_type).or_insert(0);
-            *count += 1;
 
-            for answer in message.answers() {
-                let query_type = u16::from(answer.record_type());
-                let count = self.answer_type.entry(query_type).or_insert(0);
-                *count += 1;
-            }
-
-            for answer in message.additionals() {
-                let query_type = u16::from(answer.record_type());
-                let count = self.additional_type.entry(query_type).or_insert(0);
-                *count += 1;
-            }
-
-            for answer in message.name_servers() {
-                let query_type = u16::from(answer.record_type());
-                let count = self.authority_type.entry(query_type).or_insert(0);
-                *count += 1;
-            }
-        }
         // header type only calculate the counter of response code.
-        let r_code = match message {
-            MessageOrHeader::Message(v) => v.header().response_code(),
-            MessageOrHeader::Header(header) => header.response_code(),
-        };
+        self.total = self.total + 1;
+        let r_code = header.response_code();
+        let count = self.reply_code.entry(r_code).or_insert(0);
+        *count += 1;
+        self.last_update = Some(std::time::SystemTime::now());
+    }
+    pub fn update_response_from_message(&mut self, message: &Message) {
+        self.total = self.total + 1;
+        let query_type = u16::from(message.queries()[0].query_type());
+        let count = self.query_type.entry(query_type).or_insert(0);
+        *count += 1;
+
+        for answer in message.answers() {
+            let query_type = u16::from(answer.record_type());
+            let count = self.answer_type.entry(query_type).or_insert(0);
+            *count += 1;
+        }
+
+        for answer in message.additionals() {
+            let query_type = u16::from(answer.record_type());
+            let count = self.additional_type.entry(query_type).or_insert(0);
+            *count += 1;
+        }
+
+        for answer in message.name_servers() {
+            let query_type = u16::from(answer.record_type());
+            let count = self.authority_type.entry(query_type).or_insert(0);
+            *count += 1;
+        }
+
+        let r_code = message.header().response_code();
         let count = self.reply_code.entry(r_code).or_insert(0);
         *count += 1;
         self.last_update = Some(std::time::SystemTime::now());
@@ -65,6 +87,7 @@ pub struct RunnerReport {
     start: std::time::SystemTime,
     producer_report: Option<QueryStatusStore>,
     consumer_report: Option<QueryStatusStore>,
+    histogram: Option<HistogramReport>,
 }
 
 impl RunnerReport {
@@ -73,6 +96,7 @@ impl RunnerReport {
             start: std::time::SystemTime::now(),
             producer_report: None,
             consumer_report: None,
+            histogram: None,
         }
     }
     pub fn set_producer_report(&mut self, store: QueryStatusStore) {
@@ -80,6 +104,9 @@ impl RunnerReport {
     }
     pub fn set_consumer_report(&mut self, store: QueryStatusStore) {
         self.consumer_report = Some(store);
+    }
+    pub fn set_histogram_report(&mut self, store: QueryStatusStore) {
+        self.histogram = store.report;
     }
     pub fn report(&self, output: impl ReportOutput, arguments: Argument) {
         println!("{}", output.format(&self, arguments))
@@ -105,6 +132,12 @@ struct BasicStats {
     response_total: usize,
     qps: f64,
     query_rate: f64,
+    min_lantency: f64,
+    max_lantency: f64,
+    mean_lantency: f64,
+    p99: f64,
+    p90: f64,
+    p50: f64,
 }
 impl BasicStats {
     fn new(report: &RunnerReport) -> BasicStats {
@@ -125,14 +158,40 @@ impl BasicStats {
         let response_total = report.producer_report.as_ref().unwrap().total;
         let query_rate = report.consumer_report.as_ref().unwrap().total as f64 * 100.0
             / report.producer_report.as_ref().unwrap().total as f64;
-        BasicStats {
-            response_code,
-            start_time,
-            end_time,
-            qps,
-            query_total,
-            response_total,
-            query_rate,
+
+        if report.histogram.is_none() {
+            BasicStats {
+                response_code,
+                start_time,
+                end_time,
+                qps,
+                query_total,
+                response_total,
+                query_rate,
+                min_lantency: 0.0,
+                max_lantency: 0.0,
+                mean_lantency: 0.0,
+                p99: 0.0,
+                p90: 0.0,
+                p50: 0.0,
+            }
+        } else {
+            let histogram = report.histogram.as_ref().unwrap();
+            BasicStats {
+                response_code,
+                start_time,
+                end_time,
+                qps,
+                query_total,
+                response_total,
+                query_rate,
+                min_lantency: histogram.min,
+                max_lantency: histogram.max,
+                mean_lantency: histogram.mean,
+                p99: histogram.percent99,
+                p90: histogram.percent90,
+                p50: histogram.percent50,
+            }
         }
     }
 }
@@ -243,6 +302,7 @@ impl ReportType {
             .map(|v| format!("{}={}", v.0.to_string(), v.1))
             .collect::<Vec<String>>()
             .join(",");
+
         let mut out_put = format!(
             "------------   Report   --------------
       Total Cost: {} (+time wait)
@@ -252,8 +312,14 @@ impl ReportType {
         Question: {}
   Total Response: {}
    Response Code: {}
-   Success Rate : {:.2}%
-    Average QPS : {:.0}",
+    Success Rate: {:.2}%
+     Average QPS: {:.0}
+     Min Latency: {:?}
+     Max Latency: {:?}
+    Mean Latency: {:?}
+     99% Latency: {:?}
+     90% Latency: {:?}
+     50% Latency: {:?}",
             (basic_info.end_time - basic_info.start_time).to_string(),
             basic_info.start_time.format("%+"),
             basic_info.end_time.format("%+"),
@@ -263,6 +329,12 @@ impl ReportType {
             response_code,
             basic_info.query_rate,
             basic_info.qps,
+            std::time::Duration::from_secs_f64(basic_info.min_lantency),
+            std::time::Duration::from_secs_f64(basic_info.max_lantency),
+            std::time::Duration::from_secs_f64(basic_info.mean_lantency),
+            std::time::Duration::from_secs_f64(basic_info.p99),
+            std::time::Duration::from_secs_f64(basic_info.p90),
+            std::time::Duration::from_secs_f64(basic_info.p50),
         );
         if arguments.check_all_message == true {
             let extension_output = format!(
@@ -283,7 +355,7 @@ impl ReportType {
     fn color(_report: &RunnerReport) -> String {
         unimplemented!()
     }
-    fn json(_report: &RunnerReport) -> String{
+    fn json(_report: &RunnerReport) -> String {
         unimplemented!()
     }
 }
