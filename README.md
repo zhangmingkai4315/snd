@@ -86,6 +86,22 @@ snd -m 20 -q 5 -d google.com -t NS --protocol DOH --enable-dnssec --debug --doh-
 ```
 
 
+##### DNS over DOT
+
+- total query packets to 20
+- query per second to 5
+- dns server to dns.google(8.8.8.8)
+- domain name to baidu.com
+- domain type to NS
+
+```
+snd -m 20 -q 5 -s dns.google -p 853 -d baidu.com -t NS --protocol DOT
+
+```
+
+
+
+
 ### 2. Load Test 
 
 Test Environments is a mac mini, install a local dns server for test. If you set up the environment at split dns server and snd load generator,
