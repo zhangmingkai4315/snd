@@ -5,6 +5,9 @@ use std::str::FromStr;
 use structopt::StructOpt;
 use trust_dns_client::rr::Name;
 use validator::validate_ip;
+use std::fs;
+use trust_dns_client::proto::rr::RecordType;
+use num_cpus;
 
 #[derive(Debug, Clone)]
 pub enum Protocol {
@@ -94,13 +97,51 @@ fn parse_server(value: &str) -> Result<String, String> {
 // }
 
 #[derive(Debug, Clone, StructOpt)]
-#[structopt(name = "snd", about = "a dns traffic generator")]
+#[structopt(
+    name = "snd",
+    about = "a dns traffic generator",
+    help = "snd 0.1.0
+a dns traffic generator
+
+USAGE:
+snd [OPTIONS] [FLAGS]
+
+OPTIONS:
+    -s, --server <server>                          the dns server for benchmark [default: 8.8.8.8]
+    -p, --port <port>                              the dns server port number [default: 53]
+    -d, --domain <domain>                          domain name for dns query [default: example.com]
+    -t, --type <qty>                               dns query type [default: A]
+    -q, --qps <qps>                                dns query per second [default: 10]
+    -m, --max <max>                                max dns packets will be send [default: 100]
+    -c, --client <client>                          concurrent clients numbers, set to 0 will replace with the number of cpu cores [default: 0]
+    -f, --file <file>                              the dns query file [default: \"\"]
+        --edns-size <edns-size>                    set opt max EDNS buffer size [default: 1232]
+        --protocol <protocol>                      the packet protocol for send dns request [default: UDP]
+                                                   support protocols [UDP, TCP, DOT, DOH]
+        --doh-server <doh-server>                  doh server based RFC8484 [default: https://dns.alidns.com/dns-query]
+        --doh-server-method <doh-server-method>    doh http method[GET/POST] [default: GET]
+        --source-ip <source>                       set the source ip address [default: 0.0.0.0]
+        --timeout <timeout>                        timeout for wait the packet arrive [default: 5]
+        --packet-id <packet-id>                    set to zero will random select a packet id [default: 0]
+FLAGS:
+        --check-all-message    default only check response header
+        --debug                enable debug mode
+        --disable-edns         disable EDNS
+        --disable-rd           RD (recursion desired) bit in the query
+        --enable-cd            CD (checking disabled) bit in the query
+        --enable-dnssec        enable dnssec
+        --file-loop            read dns query file in loop mode
+HELP:
+    -h, --help                 Prints help information
+VERSION:
+    -V, --version              Prints version information
+")
+]
 pub struct Argument {
     #[structopt(
         short = "s",
         long = "server",
         default_value = "8.8.8.8",
-        help = "the dns server for benchmark",
         parse(try_from_str = parse_server),
     )]
     pub server: String,
@@ -108,7 +149,6 @@ pub struct Argument {
         short = "p",
         long = "port",
         default_value = "53",
-        help = "the dns server port number",
         // validator = is_port,
     )]
     pub port: u16,
@@ -117,17 +157,15 @@ pub struct Argument {
         short = "f",
         long = "file",
         default_value = "",
-        help = "the dns query file"
     )]
     pub file: String,
 
-    #[structopt(long = "file-loop", help = "read dns query file in loop mode")]
+    #[structopt(long = "file-loop")]
     pub fileloop: bool,
 
     #[structopt(
         long = "protocol",
         default_value = "UDP",
-        help = "the packet protocol for send dns request"
     )]
     pub protocol: Protocol,
 
@@ -135,22 +173,19 @@ pub struct Argument {
         short = "q",
         long = "qps",
         default_value = "10",
-        help = "dns query per second"
     )]
     pub qps: usize,
     #[structopt(
         short = "m",
         long = "max",
         default_value = "100",
-        help = "max dns packets will be send"
     )]
     pub max: usize,
 
     #[structopt(
         short = "c",
         long = "client",
-        default_value = "10",
-        help = "concurrent dns query clients"
+        default_value = "0",
     )]
     pub client: usize,
 
@@ -158,79 +193,92 @@ pub struct Argument {
         short = "d",
         long = "domain",
         default_value = "example.com",
-        help = "domain name for dns query"
     )]
     pub domain: String,
     #[structopt(
         short = "t",
         long = "type",
         default_value = "A",
-        help = "dns query type"
     )]
     pub qty: String,
 
     #[structopt(
         long = "timeout",
         default_value = "5",
-        help = "timeout for wait the packet arrive"
     )]
     pub timeout: usize,
 
     #[structopt(
         long = "packet-id",
         default_value = "0",
-        help = "set to zero will random select a packet id"
     )]
     pub packet_id: u16,
 
     #[structopt(
         long = "doh-server-method",
         default_value = "GET",
-        help = "doh http method[GET/POST]"
     )]
     pub doh_server_method: DoHMethod,
 
     #[structopt(
         long = "doh-server",
         default_value = "https://dns.alidns.com/dns-query",
-        help = "doh server based RFC8484"
     )]
     pub doh_server: String,
 
-    #[structopt(long = "disable-rd", help = "RD (recursion desired) bit in the query")]
+    #[structopt(long = "disable-rd")]
     pub disable_rd: bool,
-    #[structopt(long = "enable-cd", help = "CD (checking disabled) bit in the query")]
+    #[structopt(long = "enable-cd")]
     pub enable_cd: bool,
 
-    #[structopt(long = "enable-dnssec", help = "enable dnssec")]
+    #[structopt(long = "enable-dnssec")]
     pub enable_dnssec: bool,
 
-    #[structopt(long = "disable-edns", help = "disable edns")]
+    #[structopt(long = "disable-edns")]
     // set the default max payload to 1232
     // https://dnsflagday.net/2020/
     pub disable_edns: bool,
     #[structopt(
         long = "edns-size",
-        default_value = "1232",
-        help = "edns size for dns packet and receive buffer"
+        default_value = "1232"
     )]
     pub edns_size: u16,
 
-    #[structopt(long = "debug", help = "enable debug mode")]
+    #[structopt(long = "debug")]
     pub debug: bool,
 
     #[structopt(long = "source-ip",
         parse(try_from_str = parse_ip),
-        default_value = "0.0.0.0",
-        help = "set the source ip address")
+        default_value = "0.0.0.0")
     ]
     pub source: IpAddr,
 
     #[structopt(
-        long = "check-all-message",
-        help = "default only check response header"
+        long = "check-all-message"
     )]
     pub check_all_message: bool,
+}
+
+impl Argument{
+    pub fn validate(&mut self)->Result<(),String>{
+        if self.file.is_empty(){
+            if let Err(e) = Name::from_str(self.domain.clone().as_str()){
+                return Err(format!("domain name {} parse fail: {}", self.domain, e.to_string()))
+            }
+            if let Err(e) = RecordType::from_str(self.qty.as_str()){
+                return Err(format!("query type {} parse fail: {}", self.qty, e.to_string()))
+            }
+        }else{
+            if fs::metadata(self.file.clone()).is_err(){
+                return Err(format!("open file {} error", self.file))
+            }
+        }
+
+        if self.client == 0 {
+            self.client = num_cpus::get();
+        }
+        Ok(())
+    }
 }
 
 impl Default for Argument {

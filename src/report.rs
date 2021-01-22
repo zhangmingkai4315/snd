@@ -271,7 +271,7 @@ impl ReportType {
         let query: Vec<_> = extension_info
             .query_type
             .iter()
-            .map(|a| format!("{} = {}", a.0.to_string(), a.1))
+            .map(|a| format!("{}={}", a.0.to_string(), a.1))
             .collect();
 
         let response: Vec<_> = extension_info

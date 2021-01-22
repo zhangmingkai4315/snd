@@ -15,6 +15,7 @@ extern crate crossbeam_channel;
 extern crate rustls;
 extern crate webpki;
 extern crate webpki_roots;
+extern crate num_cpus;
 // extern crate stream_histogram;
 
 mod arguments;
@@ -28,11 +29,14 @@ use arguments::Argument;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use runner::Runner;
-use std::error::Error;
 use structopt::StructOpt;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let arg = Argument::from_args();
+fn main() {
+    let mut arg: Argument = Argument::from_args();
+    if let Err(err)= arg.validate(){
+        println!("validate error: {}", err.as_str());
+        return
+    }
     println!("{}", arg);
     let mut builder = Builder::from_default_env();
     builder.target(Target::Stdout).filter_level({
@@ -43,5 +47,4 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
     builder.init();
     Runner::new(arg);
-    Ok(())
 }

@@ -6,39 +6,40 @@ you can set almost every bit of the packet using arguments.
 ### 1. Usage
 
 ```
-snd 0.1.0
 a dns traffic generator
 
 USAGE:
-    snd [FLAGS] [OPTIONS]
+snd [OPTIONS] [FLAGS]
 
+OPTIONS:
+    -s, --server <server>                          the dns server for benchmark [default: 8.8.8.8]
+    -p, --port <port>                              the dns server port number [default: 53]
+    -d, --domain <domain>                          domain name for dns query [default: example.com]
+    -t, --type <qty>                               dns query type [default: A]
+    -q, --qps <qps>                                dns query per second [default: 10]
+    -m, --max <max>                                max dns packets will be send [default: 100]
+    -c, --client <client>                          concurrent dns query clients [default: 10]
+    -f, --file <file>                              the dns query file [default: ""]
+        --edns-size <edns-size>                    set opt max EDNS buffer size [default: 1232]
+        --protocol <protocol>                      the packet protocol for send dns request [default: UDP]
+                                                   support protocols [UDP, TCP, DOT, DOH]
+        --doh-server <doh-server>                  doh server based RFC8484 [default: https://dns.alidns.com/dns-query]
+        --doh-server-method <doh-server-method>    doh http method[GET/POST] [default: GET]
+        --source-ip <source>                       set the source ip address [default: 0.0.0.0]
+        --timeout <timeout>                        timeout for wait the packet arrive [default: 5]
+        --packet-id <packet-id>                    set to zero will random select a packet id [default: 0]
 FLAGS:
         --check-all-message    default only check response header
         --debug                enable debug mode
-        --disable-edns         disable edns
+        --disable-edns         disable EDNS
         --disable-rd           RD (recursion desired) bit in the query
         --enable-cd            CD (checking disabled) bit in the query
         --enable-dnssec        enable dnssec
+        --file-loop            read dns query file in loop mode
+HELP:
     -h, --help                 Prints help information
+VERSION:
     -V, --version              Prints version information
-
-OPTIONS:
-    -c, --client <client>                          concurrent dns query clients [default: 10]
-        --doh-server <doh-server>                  doh server based RFC8484 [default: https://dns.alidns.com/dns-query]
-        --doh-server-method <doh-server-method>    doh http method[GET/POST] [default: GET]
-    -d, --domain <domain>                          domain name for dns query [default: example.com]
-        --edns-size <edns-size>                    edns size for dns packet and receive buffer [default: 1232]
-    -m, --max <max>                                max dns packets will be send [default: 100]
-        --packet-id <packet-id>                    set to zero will random select a packet id [default: 0]
-    -p, --port <port>                              the dns server port number [default: 53]
-        --protocol <protocol>                      the packet protocol for send dns request [default: UDP]
-    -q, --qps <qps>                                dns query per second [default: 10]
-    -t, --type <qty>                               dns query type [multi types supported] [default: A,SOA]
-    -s, --server <server>                          the dns server for benchmark [default: 8.8.8.8]
-        --source-ip <source>                       set the source ip address [default: 0.0.0.0]
-        --timeout <timeout>                        timeout for wait the packet arrive [default: 5]
-
-
 ```
 
 ##### DNS over UDP 
