@@ -1,8 +1,8 @@
 use crossbeam_channel::{Receiver, Sender};
 use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use std::net::TcpStream;
 use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
@@ -33,7 +33,6 @@ impl DoTWorker {
 
         // stream.set_nonblocking(true).expect("set tcp unblock fail");
         let thread = std::thread::spawn(move || {
-
             let mut socket = TcpStream::connect(server_port.clone())
                 .expect(format!("unable to connect to server :{}", server_port).as_str());
             if let Err(e) = socket.set_read_timeout(Some(std::time::Duration::from_secs(
@@ -42,13 +41,15 @@ impl DoTWorker {
                 error!("read_timeout {:?}", e);
             }
             let mut config = rustls::ClientConfig::new();
-            config.root_store.add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+            config
+                .root_store
+                .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
 
             let arc = std::sync::Arc::new(config);
-            let dns_name = webpki::DNSNameRef::try_from_ascii_str(arguments.server.as_str()).unwrap();
+            let dns_name =
+                webpki::DNSNameRef::try_from_ascii_str(arguments.server.as_str()).unwrap();
             let mut client = rustls::ClientSession::new(&arc, dns_name);
             let mut stream = rustls::Stream::new(&mut client, &mut socket);
-
 
             loop {
                 let data = match rx.lock().unwrap().recv() {

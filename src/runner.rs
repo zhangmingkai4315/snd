@@ -2,12 +2,12 @@ use crate::arguments::{Argument, Protocol};
 use crate::cache::Cache;
 use crate::histogram::Histogram;
 use crate::report::{QueryStatusStore, ReportType, RunnerReport};
+use crate::workers::dot::DoTWorker;
 use crate::workers::{doh::DOHWorker, tcp::TCPWorker, udp::UDPWorker, MessageOrHeader, Worker};
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
-use crate::workers::dot::DoTWorker;
 
 pub struct Runner {
     arguments: Argument,
@@ -189,9 +189,7 @@ impl QueryConsumer {
                             close_sender.send(true).expect("send to close channel fail");
                         }
                     },
-                    _ => {
-                        error!("lock store thread fail")
-                    }
+                    _ => error!("lock store thread fail"),
                 }
             }
         });

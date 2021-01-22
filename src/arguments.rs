@@ -1,9 +1,9 @@
 use std::fmt;
-use std::fmt::{Formatter};
+use std::fmt::Formatter;
 use std::net::IpAddr;
 use std::str::FromStr;
 use structopt::StructOpt;
-use trust_dns_client::rr::{Name};
+use trust_dns_client::rr::Name;
 use validator::validate_ip;
 
 #[derive(Debug, Clone)]
@@ -117,7 +117,7 @@ pub struct Argument {
         short = "f",
         long = "file",
         default_value = "",
-        help = "the dns query file",
+        help = "the dns query file"
     )]
     pub file: String,
 
@@ -165,7 +165,7 @@ pub struct Argument {
         short = "t",
         long = "type",
         default_value = "A",
-        help = "dns query type",
+        help = "dns query type"
     )]
     pub qty: String,
 
@@ -206,8 +206,6 @@ pub struct Argument {
     pub enable_dnssec: bool,
 
     #[structopt(long = "disable-edns", help = "disable edns")]
-
-
     // set the default max payload to 1232
     // https://dnsflagday.net/2020/
     pub disable_edns: bool,
@@ -262,14 +260,14 @@ Transport Protocol: {:?}
             {
                 if self.file.is_empty() {
                     self.domain.as_str()
-                }else{
+                } else {
                     self.file.as_str()
                 }
             },
             {
                 if self.file.is_empty() {
                     "from query file"
-                }else{
+                } else {
                     self.qty.as_str()
                 }
             },

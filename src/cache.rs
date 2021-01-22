@@ -1,10 +1,9 @@
 use crate::arguments::{Argument, Protocol};
-use rand::{Rng};
-use std::str::FromStr;
+use rand::Rng;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
-
+use std::str::FromStr;
 
 use trust_dns_client::proto::{
     op::{Edns, Message, Query},
@@ -21,7 +20,7 @@ pub struct Cache {
 
 #[warn(dead_code)]
 impl Cache {
-    pub(crate) fn new_from_file(args: &Argument) -> Vec<(Vec<u8>, u16)>{
+    pub(crate) fn new_from_file(args: &Argument) -> Vec<(Vec<u8>, u16)> {
         let file = args.file.to_owned();
         let mut query_data = vec![];
         if let Ok(lines) = read_lines(file) {
@@ -31,28 +30,20 @@ impl Cache {
                     let mut splitter = query_type.split_whitespace();
                     // let mut domain = "";
                     // let mut qtype = "";
-                    let (domain, qtype) = match splitter.next(){
-                        Some(d) => {
-                            match splitter.next() {
-                                Some(q) => {
-                                    (d, q)
-                                }
-                                _ => (d, "A")
-                            }
+                    let (domain, qtype) = match splitter.next() {
+                        Some(d) => match splitter.next() {
+                            Some(q) => (d, q),
+                            _ => (d, "A"),
                         },
-                        _ =>{
+                        _ => {
                             error!("read query file fail");
-                            continue
+                            continue;
                         }
                     };
                     let qty = qtype.parse().unwrap();
-                    match Cache::build_packet(
-                        domain.to_string(),
-                        qty,
-                        args
-                    ){
+                    match Cache::build_packet(domain.to_string(), qty, args) {
                         Some(v) => query_data.push((v, u16::from(qty))),
-                        _ => continue
+                        _ => continue,
                     }
                 }
             }
@@ -64,20 +55,17 @@ impl Cache {
         let qty = args.qty.as_str();
         let mut query_data = vec![];
         let qty = RecordType::from_str(qty).expect("unknown type");
-        if let Some(v) = Cache::build_packet(
-             domain,
-             qty,
-            args
-        ){
+        if let Some(v) = Cache::build_packet(domain, qty, args) {
             query_data.push((v, u16::from(qty)));
         }
         query_data
     }
 
     pub(crate) fn build_packet(
-        domain: String, qty: RecordType, args: &Argument
-    )-> Option<Vec<u8>>{
-
+        domain: String,
+        qty: RecordType,
+        args: &Argument,
+    ) -> Option<Vec<u8>> {
         let ref mut message = Message::new();
 
         let mut query = Query::default();
@@ -99,9 +87,7 @@ impl Cache {
         let protocol = args.protocol.clone();
         if let Ok(mut raw) = message.to_vec() {
             return match protocol {
-                Protocol::UDP | Protocol::DOH => {
-                    Some(raw)
-                },
+                Protocol::UDP | Protocol::DOH => Some(raw),
                 Protocol::TCP | Protocol::DOT => {
                     let size = raw.len();
                     let mut raw_with_size: Vec<u8> =
@@ -110,14 +96,14 @@ impl Cache {
                     Some(raw_with_size)
                 }
             };
-        }else{
+        } else {
             None
         }
     }
     pub(crate) fn new(argument: &Argument) -> Cache {
         // let domain = argument.domain.clone();
         let protocol = argument.clone().protocol;
-        let packet_id_number  = argument.packet_id;
+        let packet_id_number = argument.packet_id;
         if argument.file.is_empty() {
             Cache {
                 packet_id_number,
@@ -126,7 +112,7 @@ impl Cache {
                 counter: 0,
                 size: 1,
             }
-        }else{
+        } else {
             let cache = Cache::new_from_file(argument);
             let size = cache.len();
             Cache {
@@ -145,11 +131,10 @@ impl Cache {
     pub fn build_message(&mut self) -> (Vec<u8>, u16) {
         let offset = {
             match self.protocol {
-                Protocol::TCP | Protocol::DOT=> 2,
+                Protocol::TCP | Protocol::DOT => 2,
                 Protocol::UDP | Protocol::DOH => 0,
             }
         };
-
 
         let random_id = {
             match self.packet_id_number {
@@ -158,7 +143,7 @@ impl Cache {
             }
         };
 
-        self.counter+=1;
+        self.counter += 1;
         let mut data = self.cache[self.counter % self.size].clone();
         data.0[offset] = random_id[0];
         data.0[offset + 1] = random_id[1];
@@ -169,11 +154,12 @@ impl Cache {
 // The output is wrapped in a Result to allow matching on errors
 // Returns an Iterator to the Reader of the lines of the file.
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-    where P: AsRef<Path>, {
+where
+    P: AsRef<Path>,
+{
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
-
 
 #[cfg(test)]
 mod test {
@@ -190,10 +176,7 @@ mod test {
                 assert!(false);
             }
         }
-        let data  = cache.build_message();
+        let data = cache.build_message();
         assert_eq!(data.len(), cache.template.len());
     }
 }
-
-
-

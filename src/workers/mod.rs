@@ -12,6 +12,6 @@ pub enum MessageOrHeader {
 }
 
 pub mod doh;
-pub mod tcp;
 pub mod dot;
+pub mod tcp;
 pub mod udp;
