@@ -169,14 +169,13 @@ mod test {
     #[test]
     fn test_cache() {
         let arg = Argument::default();
-        let mut cache = Cache::new(&arg);
-        match Message::from_vec(cache.template.as_slice()) {
+        let cache = Cache::new(&arg);
+        assert_eq!(cache.cache.len(), 1);
+        match Message::from_vec(cache.cache[0].0.as_slice()) {
             Ok(v) => assert_eq!(v.query_count(), 1),
             _ => {
                 assert!(false);
             }
         }
-        let data = cache.build_message();
-        assert_eq!(data.len(), cache.template.len());
     }
 }

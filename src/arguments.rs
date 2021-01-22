@@ -233,6 +233,35 @@ pub struct Argument {
     pub check_all_message: bool,
 }
 
+impl Default for Argument{
+    fn default() -> Self {
+        Argument{
+            server: "8.8.8.8".to_string(),
+            port: 53,
+            file: "".to_string(),
+            fileloop: false,
+            protocol: Default::default(),
+            qps: 10,
+            max: 100,
+            client: 1,
+            domain: "google.com".to_string(),
+            qty: "NS".to_string(),
+            timeout: 5,
+            packet_id: 0,
+            doh_server_method: Default::default(),
+            doh_server: "".to_string(),
+            disable_rd: false,
+            enable_cd: false,
+            enable_dnssec: false,
+            disable_edns: false,
+            edns_size: 0,
+            debug: false,
+            source: IpAddr::from_str("0.0.0.0").unwrap(),
+            check_all_message: false
+        }
+    }
+}
+
 impl fmt::Display for Argument {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(

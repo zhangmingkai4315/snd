@@ -295,8 +295,7 @@ impl HistogramReport {
 #[cfg(test)]
 mod tests {
     use super::Histogram;
-    use crate::HistogramReport;
-    use rand::distributions::{Distribution, Normal};
+    use super::HistogramReport;
 
     #[test]
     fn test_histogram() {
