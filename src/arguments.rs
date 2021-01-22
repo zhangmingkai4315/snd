@@ -1,9 +1,9 @@
 use std::fmt;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Formatter};
 use std::net::IpAddr;
 use std::str::FromStr;
 use structopt::StructOpt;
-use trust_dns_client::rr::{Name, RecordType};
+use trust_dns_client::rr::{Name};
 use validator::validate_ip;
 
 #[derive(Debug, Clone)]
@@ -74,35 +74,24 @@ fn parse_server(value: &str) -> Result<String, String> {
     }
     Ok(value.to_owned())
 }
-#[derive(Debug, Clone, Default)]
-pub struct DomainTypeVec(pub(crate) Vec<RecordType>);
+// #[derive(Debug, Clone, Default)]
+// pub struct DomainTypeVec(pub(crate) Vec<RecordType>);
+//
+// impl DomainTypeVec {
+//     pub fn size(&self) -> usize {
+//         self.0.len()
+//     }
+// }
 
-impl DomainTypeVec {
-    pub fn size(&self) -> usize {
-        self.0.len()
-    }
-}
-
-impl Display for DomainTypeVec {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut dtype_vec = vec![];
-        for x in &self.0 {
-            dtype_vec.push(x.to_string());
-        }
-        write!(f, "{}", dtype_vec.join(","))
-    }
-}
-
-fn parse_domain_type(value: &str) -> Result<DomainTypeVec, String> {
-    let mut type_vec = vec![];
-    for x in value.to_uppercase().split(",") {
-        match RecordType::from_str(x) {
-            Ok(v) => type_vec.push(v),
-            _ => return Err(format!("unknown type: {}", x)),
-        }
-    }
-    Ok(DomainTypeVec(type_vec))
-}
+// impl Display for DomainTypeVec {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         let mut dtype_vec = vec![];
+//         for x in &self.0 {
+//             dtype_vec.push(x.to_string());
+//         }
+//         write!(f, "{}", dtype_vec.join(","))
+//     }
+// }
 
 #[derive(Debug, Clone, StructOpt)]
 #[structopt(name = "snd", about = "a dns traffic generator")]
@@ -123,6 +112,18 @@ pub struct Argument {
         // validator = is_port,
     )]
     pub port: u16,
+
+    #[structopt(
+        short = "f",
+        long = "file",
+        default_value = "",
+        help = "the dns query file",
+    )]
+    pub file: String,
+
+    #[structopt(long = "file-loop", help = "read dns query file in loop mode")]
+    pub fileloop: bool,
+
     #[structopt(
         long = "protocol",
         default_value = "UDP",
@@ -163,11 +164,10 @@ pub struct Argument {
     #[structopt(
         short = "t",
         long = "type",
-        default_value = "A,SOA",
-        help = "dns query type [multi types supported]",
-        parse(try_from_str = parse_domain_type)
+        default_value = "A",
+        help = "dns query type",
     )]
-    pub qty: DomainTypeVec,
+    pub qty: String,
 
     #[structopt(
         long = "timeout",
@@ -206,6 +206,10 @@ pub struct Argument {
     pub enable_dnssec: bool,
 
     #[structopt(long = "disable-edns", help = "disable edns")]
+
+
+    // set the default max payload to 1232
+    // https://dnsflagday.net/2020/
     pub disable_edns: bool,
     #[structopt(
         long = "edns-size",
@@ -255,8 +259,20 @@ Transport Protocol: {:?}
      Enable DNSSEC: {},
  Check All Message: {}\n",
             env!("CARGO_PKG_VERSION"),
-            self.domain,
-            self.qty,
+            {
+                if self.file.is_empty() {
+                    self.domain.as_str()
+                }else{
+                    self.file.as_str()
+                }
+            },
+            {
+                if self.file.is_empty() {
+                    "from query file"
+                }else{
+                    self.qty.as_str()
+                }
+            },
             {
                 match self.protocol {
                     Protocol::DOH => {

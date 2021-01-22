@@ -33,11 +33,13 @@ impl QueryStatusStore {
             report: None,
         }
     }
+    #[allow(dead_code)]
     pub fn update_query(&mut self, query_type: u16) {
         self.total = self.total + 1;
         let count = self.query_type.entry(query_type).or_insert(0);
         *count += 1;
     }
+
     pub fn update_histogram_report(&mut self, report: Option<HistogramReport>) {
         self.report = report;
     }

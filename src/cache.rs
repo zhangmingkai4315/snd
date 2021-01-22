@@ -1,6 +1,10 @@
 use crate::arguments::{Argument, Protocol};
-use rand::{seq::SliceRandom, Rng};
+use rand::{Rng};
 use std::str::FromStr;
+use std::fs::File;
+use std::io::{self, BufRead};
+use std::path::Path;
+
 
 use trust_dns_client::proto::{
     op::{Edns, Message, Query},
@@ -8,74 +12,130 @@ use trust_dns_client::proto::{
 };
 
 pub struct Cache {
-    template: Vec<u8>,
     packet_id_number: u16,
-    qty_pos: usize,
     protocol: Protocol,
-    qty: Vec<RecordType>,
+    cache: Vec<(Vec<u8>, u16)>,
+    counter: usize,
+    size: usize,
 }
 
 #[warn(dead_code)]
 impl Cache {
-    pub(crate) fn new(argument: &Argument) -> Cache {
-        // let domain = argument.domain.clone();
-        let query_type: Vec<RecordType> = vec![RecordType::A];
-        let qty = {
-            if argument.qty.size() == 0 {
-                query_type
-            } else {
-                argument.qty.0.clone()
+    pub(crate) fn new_from_file(args: &Argument) -> Vec<(Vec<u8>, u16)>{
+        let file = args.file.to_owned();
+        let mut query_data = vec![];
+        if let Ok(lines) = read_lines(file) {
+            // Consumes the iterator, returns an (Optional) String
+            for line in lines {
+                if let Ok(query_type) = line {
+                    let mut splitter = query_type.split_whitespace();
+                    // let mut domain = "";
+                    // let mut qtype = "";
+                    let (domain, qtype) = match splitter.next(){
+                        Some(d) => {
+                            match splitter.next() {
+                                Some(q) => {
+                                    (d, q)
+                                }
+                                _ => (d, "A")
+                            }
+                        },
+                        _ =>{
+                            error!("read query file fail");
+                            continue
+                        }
+                    };
+                    let qty = qtype.parse().unwrap();
+                    match Cache::build_packet(
+                        domain.to_string(),
+                        qty,
+                        args
+                    ){
+                        Some(v) => query_data.push((v, u16::from(qty))),
+                        _ => continue
+                    }
+                }
             }
-        };
+        }
+        query_data
+    }
+    pub(crate) fn new_from_argument(args: &Argument) -> Vec<(Vec<u8>, u16)> {
+        let domain = args.domain.to_owned();
+        let qty = args.qty.as_str();
+        let mut query_data = vec![];
+        let qty = RecordType::from_str(qty).expect("unknown type");
+        if let Some(v) = Cache::build_packet(
+             domain,
+             qty,
+            args
+        ){
+            query_data.push((v, u16::from(qty)));
+        }
+        query_data
+    }
+
+    pub(crate) fn build_packet(
+        domain: String, qty: RecordType, args: &Argument
+    )-> Option<Vec<u8>>{
 
         let ref mut message = Message::new();
 
         let mut query = Query::default();
-        let name = match Name::from_str(argument.domain.clone().as_str()) {
+        let name = match Name::from_str(domain.clone().as_str()) {
             Ok(name) => name,
             Err(e) => panic!("the domain name format is not correct: {}", e.to_string()),
         };
-        let qty_pos = 12 + name.len();
         query.set_name(name);
+        query.set_query_type(qty);
         message.add_query(query);
-        message.set_recursion_desired(!argument.disable_rd);
-        message.set_checking_disabled(argument.enable_cd);
-        if argument.disable_edns == true {
+        message.set_recursion_desired(!args.disable_rd);
+        message.set_checking_disabled(args.enable_cd);
+        if args.disable_edns == true {
             let mut edns = Edns::default();
-            edns.set_dnssec_ok(argument.enable_dnssec);
-            edns.set_max_payload(argument.edns_size);
-            // set the max payload to 1232
-            // https://dnsflagday.net/2020/
-            edns.set_max_payload(1232);
+            edns.set_dnssec_ok(args.enable_dnssec);
+            edns.set_max_payload(args.edns_size);
             message.set_edns(edns);
         }
-
-        let protocol = argument.protocol.clone();
+        let protocol = args.protocol.clone();
         if let Ok(mut raw) = message.to_vec() {
             return match protocol {
-                Protocol::UDP | Protocol::DOH => Cache {
-                    template: raw,
-                    packet_id_number: argument.packet_id,
-                    qty,
-                    qty_pos,
-                    protocol,
+                Protocol::UDP | Protocol::DOH => {
+                    Some(raw)
                 },
                 Protocol::TCP | Protocol::DOT => {
                     let size = raw.len();
                     let mut raw_with_size: Vec<u8> =
                         [((size & 0xff00) >> 8) as u8, (size & 0x00ff) as u8].to_vec();
                     raw_with_size.append(&mut raw);
-                    Cache {
-                        template: raw_with_size,
-                        packet_id_number: argument.packet_id,
-                        qty,
-                        qty_pos,
-                        protocol,
-                    }
+                    Some(raw_with_size)
                 }
             };
-        } else {
-            panic!("fail to encode to binary")
+        }else{
+            None
+        }
+    }
+    pub(crate) fn new(argument: &Argument) -> Cache {
+        // let domain = argument.domain.clone();
+        let protocol = argument.clone().protocol;
+        let packet_id_number  = argument.packet_id;
+        if argument.file.is_empty() {
+            Cache {
+                packet_id_number,
+                protocol,
+                cache: Cache::new_from_argument(argument),
+                counter: 0,
+                size: 1,
+            }
+        }else{
+            let cache = Cache::new_from_file(argument);
+            let size = cache.len();
+            Cache {
+                packet_id_number,
+                protocol,
+                cache,
+                counter: 0,
+                size,
+            }
         }
     }
     fn get_random_id() -> [u8; 2] {
@@ -89,21 +149,31 @@ impl Cache {
                 Protocol::UDP | Protocol::DOH => 0,
             }
         };
+
+
         let random_id = {
             match self.packet_id_number {
                 0 => Cache::get_random_id(),
                 _ => self.packet_id_number.to_be_bytes(),
             }
         };
-        self.template[offset] = random_id[0];
-        self.template[offset + 1] = random_id[1];
-        let qtype: u16 = u16::from(*(self.qty.choose(&mut rand::thread_rng()).unwrap()));
-        let temp = qtype.to_be_bytes();
-        self.template[self.qty_pos + 1 + offset] = temp[0];
-        self.template[self.qty_pos + 2 + offset] = temp[1];
-        (self.template.clone(), qtype)
+
+        self.counter+=1;
+        let mut data = self.cache[self.counter % self.size].clone();
+        data.0[offset] = random_id[0];
+        data.0[offset + 1] = random_id[1];
+        data
     }
 }
+
+// The output is wrapped in a Result to allow matching on errors
+// Returns an Iterator to the Reader of the lines of the file.
+fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
+    where P: AsRef<Path>, {
+    let file = File::open(filename)?;
+    Ok(io::BufReader::new(file).lines())
+}
+
 
 #[cfg(test)]
 mod test {
@@ -120,7 +190,10 @@ mod test {
                 assert!(false);
             }
         }
-        let (data, qtype) = cache.build_message();
+        let data  = cache.build_message();
         assert_eq!(data.len(), cache.template.len());
     }
 }
+
+
+
