@@ -32,32 +32,32 @@ impl UDPWorker {
         socket
             .connect(server_port)
             .expect("unable to connect to server");
-        // socket.set_nonblocking(true).expect("set udp unblock fail");
         let edns_size_local = arguments.edns_size as usize;
         let check_all_message = arguments.check_all_message;
-
+        socket.set_nonblocking(true).expect("set udp unblock fail");
         let thread = std::thread::spawn(move || {
+            let mut send_finished = Instant::now();
             loop {
                 // TODO: how about each thread has own producer?
-                let data = match rx.lock().unwrap().recv() {
-                    Ok(data) => data,
-                    Err(_) => {
-                        break;
+                if let Ok(data) = rx.lock().unwrap().recv() {
+                        debug!("send {:?}", data.as_slice());
+                        if let Err(e) = socket.send(data.as_slice()) {
+                            error!("send error : {}", e);
+                        };
+                    send_finished = Instant::now()
+                }else{
+                    let elapsed = send_finished.elapsed().as_secs_f64();
+                    if elapsed > arguments.timeout as f64{
+                        break
                     }
                 };
-                debug!("send {:?}", data.as_slice());
-                let start = Instant::now();
-                if let Err(e) = socket.send(data.as_slice()) {
-                    error!("send error : {}", e);
-                };
-
                 if check_all_message == true {
                     let mut buffer = vec![0; edns_size_local];
                     if let Ok(size) = socket.recv(&mut buffer) {
                         if let Ok(message) = Message::from_bytes(&buffer[..size]) {
                             if let Err(e) = result_sender.send(MessageOrHeader::Message((
                                 message,
-                                start.elapsed().as_secs_f64(),
+                                0.0,
                             ))) {
                                 error!("send packet: {:?}", e);
                             };
@@ -71,7 +71,7 @@ impl UDPWorker {
                         if let Ok(message) = Header::from_bytes(&buffer[..size]) {
                             if let Err(e) = result_sender.send(MessageOrHeader::Header((
                                 message,
-                                start.elapsed().as_secs_f64(),
+                                0.0,
                             ))) {
                                 error!("send packet: {:?}", e);
                             };
