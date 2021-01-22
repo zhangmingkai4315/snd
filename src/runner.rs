@@ -7,6 +7,7 @@ use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
+use crate::workers::dot::DoTWorker;
 
 pub struct Runner {
     arguments: Argument,
@@ -40,6 +41,13 @@ impl Runner {
                 }
                 Protocol::TCP => {
                     workers.push(Box::new(TCPWorker::new(
+                        arguments.clone(),
+                        receiver.clone(),
+                        result_sender,
+                    )));
+                }
+                Protocol::DOT => {
+                    workers.push(Box::new(DoTWorker::new(
                         arguments.clone(),
                         receiver.clone(),
                         result_sender,

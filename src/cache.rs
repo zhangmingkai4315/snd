@@ -60,7 +60,7 @@ impl Cache {
                     qty_pos,
                     protocol,
                 },
-                Protocol::TCP => {
+                Protocol::TCP | Protocol::DOT => {
                     let size = raw.len();
                     let mut raw_with_size: Vec<u8> =
                         [((size & 0xff00) >> 8) as u8, (size & 0x00ff) as u8].to_vec();
@@ -85,7 +85,7 @@ impl Cache {
     pub fn build_message(&mut self) -> (Vec<u8>, u16) {
         let offset = {
             match self.protocol {
-                Protocol::TCP => 2,
+                Protocol::TCP | Protocol::DOT=> 2,
                 Protocol::UDP | Protocol::DOH => 0,
             }
         };

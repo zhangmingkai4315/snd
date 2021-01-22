@@ -24,3 +24,7 @@ base64 = "0.13.0"
 net2="0.2.37"
 #stream_histogram="0.1.1"
 linked-list="0.0.3"
+# using for tls
+rustls="0.17.0"
+webpki="0.21.4"
+webpki-roots = "0.21.0"

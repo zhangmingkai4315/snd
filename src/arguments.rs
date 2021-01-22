@@ -11,6 +11,7 @@ pub enum Protocol {
     UDP,
     TCP,
     DOH,
+    DOT,
 }
 impl Default for Protocol {
     fn default() -> Self {
@@ -25,6 +26,7 @@ impl FromStr for Protocol {
             "UDP" => Ok(Protocol::UDP),
             "TCP" => Ok(Protocol::TCP),
             "DOH" => Ok(Protocol::DOH),
+            "DOT" => Ok(Protocol::DOT),
             _ => Err(format!("protocol {} not valid", protocol)),
         }
     }

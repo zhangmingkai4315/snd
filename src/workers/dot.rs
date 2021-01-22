@@ -1,50 +1,55 @@
 use crossbeam_channel::{Receiver, Sender};
 use std::io::{Read, Write};
-use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use std::net::TcpStream;
 use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
 use super::{MessageOrHeader, Worker, HEADER_SIZE};
 use crate::arguments::Argument;
 
-pub struct TCPWorker {
+pub struct DoTWorker {
     write_thread: Option<std::thread::JoinHandle<()>>,
 }
 
-impl Worker for TCPWorker {
+impl Worker for DoTWorker {
     fn block(&mut self) {
         if let Some(handler) = self.write_thread.take() {
-            handler.join().expect("fail to join tcp thread");
+            handler.join().expect("fail to join dot thread");
         }
     }
 }
 
-impl TCPWorker {
+impl DoTWorker {
     pub fn new(
         arguments: Argument,
         receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
         result_sender: Sender<MessageOrHeader>,
-    ) -> TCPWorker {
+    ) -> DoTWorker {
         let rx = receiver.clone();
         let server_port = format!("{}:{}", arguments.server, arguments.port);
         let check_all_message = arguments.check_all_message;
 
         // stream.set_nonblocking(true).expect("set tcp unblock fail");
         let thread = std::thread::spawn(move || {
-            // TODO : tcp source ip setting
-            // let builder = TcpBuilder::new_v4().expect("unable using tcp v4 resource");
-            // let source_ip_addr = format!("{}:0", arguments.source);
-            // let sock = TcpListener::bind(source_ip_addr).unwrap();
-            let mut stream = TcpStream::connect(server_port.clone())
-                .expect(format!("unable to connect to server :{}", server_port).as_str());
 
-            if let Err(e) = stream.set_read_timeout(Some(std::time::Duration::from_secs(
+            let mut socket = TcpStream::connect(server_port.clone())
+                .expect(format!("unable to connect to server :{}", server_port).as_str());
+            if let Err(e) = socket.set_read_timeout(Some(std::time::Duration::from_secs(
                 arguments.timeout as u64,
             ))) {
                 error!("read_timeout {:?}", e);
             }
+            let mut config = rustls::ClientConfig::new();
+            config.root_store.add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+
+            let arc = std::sync::Arc::new(config);
+            let dns_name = webpki::DNSNameRef::try_from_ascii_str(arguments.server.as_str()).unwrap();
+            let mut client = rustls::ClientSession::new(&arc, dns_name);
+            let mut stream = rustls::Stream::new(&mut client, &mut socket);
+
+
             loop {
                 let data = match rx.lock().unwrap().recv() {
                     Ok(data) => data,
@@ -96,7 +101,7 @@ impl TCPWorker {
             debug!("tcp worker thread exit success");
             drop(result_sender);
         });
-        TCPWorker {
+        DoTWorker {
             write_thread: Some(thread),
         }
     }

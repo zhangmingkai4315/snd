@@ -12,6 +12,9 @@ extern crate validator;
 #[macro_use]
 extern crate log;
 extern crate crossbeam_channel;
+extern crate rustls;
+extern crate webpki;
+extern crate webpki_roots;
 // extern crate stream_histogram;
 
 mod arguments;
