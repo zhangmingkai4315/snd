@@ -273,6 +273,7 @@ pub struct HistogramReport {
     pub max: f64,
     pub min: f64,
     pub percent99: f64,
+    pub percent95: f64,
     pub percent90: f64,
     pub percent50: f64,
 }
@@ -286,6 +287,7 @@ impl HistogramReport {
             max: histogram.max?,
             min: histogram.min?,
             percent99: histogram.quantile(0.99)?,
+            percent95: histogram.quantile(0.95)?,
             percent90: histogram.quantile(0.90)?,
             percent50: histogram.quantile(0.50)?,
         })

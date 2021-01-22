@@ -233,9 +233,9 @@ pub struct Argument {
     pub check_all_message: bool,
 }
 
-impl Default for Argument{
+impl Default for Argument {
     fn default() -> Self {
-        Argument{
+        Argument {
             server: "8.8.8.8".to_string(),
             port: 53,
             file: "".to_string(),
@@ -257,7 +257,7 @@ impl Default for Argument{
             edns_size: 0,
             debug: false,
             source: IpAddr::from_str("0.0.0.0").unwrap(),
-            check_all_message: false
+            check_all_message: false,
         }
     }
 }

@@ -138,6 +138,7 @@ struct BasicStats {
     max_lantency: f64,
     mean_lantency: f64,
     p99: f64,
+    p95: f64,
     p90: f64,
     p50: f64,
 }
@@ -174,6 +175,7 @@ impl BasicStats {
                 max_lantency: 0.0,
                 mean_lantency: 0.0,
                 p99: 0.0,
+                p95: 0.0,
                 p90: 0.0,
                 p50: 0.0,
             }
@@ -191,6 +193,7 @@ impl BasicStats {
                 max_lantency: histogram.max,
                 mean_lantency: histogram.mean,
                 p99: histogram.percent99,
+                p95: histogram.percent95,
                 p90: histogram.percent90,
                 p50: histogram.percent50,
             }
@@ -320,6 +323,7 @@ impl ReportType {
      Max Latency: {:?}
     Mean Latency: {:?}
      99% Latency: {:?}
+     95% Latency: {:?}
      90% Latency: {:?}
      50% Latency: {:?}",
             (basic_info.end_time - basic_info.start_time).to_string(),
@@ -335,6 +339,7 @@ impl ReportType {
             std::time::Duration::from_secs_f64(basic_info.max_lantency),
             std::time::Duration::from_secs_f64(basic_info.mean_lantency),
             std::time::Duration::from_secs_f64(basic_info.p99),
+            std::time::Duration::from_secs_f64(basic_info.p95),
             std::time::Duration::from_secs_f64(basic_info.p90),
             std::time::Duration::from_secs_f64(basic_info.p50),
         );
