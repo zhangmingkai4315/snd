@@ -1,13 +1,13 @@
+use num_cpus;
 use std::fmt;
 use std::fmt::Formatter;
+use std::fs;
 use std::net::IpAddr;
 use std::str::FromStr;
 use structopt::StructOpt;
+use trust_dns_client::proto::rr::RecordType;
 use trust_dns_client::rr::Name;
 use validator::validate_ip;
-use std::fs;
-use trust_dns_client::proto::rr::RecordType;
-use num_cpus;
 
 #[derive(Debug, Clone)]
 pub enum Protocol {
@@ -114,7 +114,8 @@ OPTIONS:
     -q, --qps <qps>                                dns query per second [default: 10]
     -m, --max <max>                                max dns packets will be send [default: 100]
     -c, --client <client>                          concurrent clients numbers, set to 0 will replace with the number of cpu cores [default: 0]
-    -f, --file <file>                              the dns query file [default: \"\"]
+    -f, --file <file>                              the dns query file, default using -d for single domain query [default: \"\"]
+    -o, --output <file>                            format output report to stdout, .json or .yaml file [default: \"\"]
         --edns-size <edns-size>                    set opt max EDNS buffer size [default: 1232]
         --protocol <protocol>                      the packet protocol for send dns request [default: UDP]
                                                    support protocols [UDP, TCP, DOT, DOH]
@@ -130,13 +131,12 @@ FLAGS:
         --disable-rd           RD (recursion desired) bit in the query
         --enable-cd            CD (checking disabled) bit in the query
         --enable-dnssec        enable dnssec
-        --file-loop            read dns query file in loop mode
 HELP:
     -h, --help                 Prints help information
 VERSION:
     -V, --version              Prints version information
-")
-]
+"
+)]
 pub struct Argument {
     #[structopt(
         short = "s",
@@ -153,76 +153,40 @@ pub struct Argument {
     )]
     pub port: u16,
 
-    #[structopt(
-        short = "f",
-        long = "file",
-        default_value = "",
-    )]
+    #[structopt(short = "f", long = "file", default_value = "")]
     pub file: String,
 
     #[structopt(long = "file-loop")]
     pub fileloop: bool,
 
-    #[structopt(
-        long = "protocol",
-        default_value = "UDP",
-    )]
+    #[structopt(long = "protocol", default_value = "UDP")]
     pub protocol: Protocol,
 
-    #[structopt(
-        short = "q",
-        long = "qps",
-        default_value = "10",
-    )]
+    #[structopt(short = "q", long = "qps", default_value = "10")]
     pub qps: usize,
-    #[structopt(
-        short = "m",
-        long = "max",
-        default_value = "100",
-    )]
+    #[structopt(short = "m", long = "max", default_value = "100")]
     pub max: usize,
 
-    #[structopt(
-        short = "c",
-        long = "client",
-        default_value = "0",
-    )]
+    #[structopt(short = "c", long = "client", default_value = "0")]
     pub client: usize,
 
-    #[structopt(
-        short = "d",
-        long = "domain",
-        default_value = "example.com",
-    )]
+    #[structopt(short = "d", long = "domain", default_value = "example.com")]
     pub domain: String,
-    #[structopt(
-        short = "t",
-        long = "type",
-        default_value = "A",
-    )]
+    #[structopt(short = "t", long = "type", default_value = "A")]
     pub qty: String,
 
-    #[structopt(
-        long = "timeout",
-        default_value = "5",
-    )]
+    #[structopt(long = "timeout", default_value = "5")]
     pub timeout: usize,
 
-    #[structopt(
-        long = "packet-id",
-        default_value = "0",
-    )]
+    #[structopt(long = "packet-id", default_value = "0")]
     pub packet_id: u16,
 
-    #[structopt(
-        long = "doh-server-method",
-        default_value = "GET",
-    )]
+    #[structopt(long = "doh-server-method", default_value = "GET")]
     pub doh_server_method: DoHMethod,
 
     #[structopt(
         long = "doh-server",
-        default_value = "https://dns.alidns.com/dns-query",
+        default_value = "https://dns.alidns.com/dns-query"
     )]
     pub doh_server: String,
 
@@ -238,10 +202,7 @@ pub struct Argument {
     // set the default max payload to 1232
     // https://dnsflagday.net/2020/
     pub disable_edns: bool,
-    #[structopt(
-        long = "edns-size",
-        default_value = "1232"
-    )]
+    #[structopt(long = "edns-size", default_value = "1232")]
     pub edns_size: u16,
 
     #[structopt(long = "debug")]
@@ -253,25 +214,37 @@ pub struct Argument {
     ]
     pub source: IpAddr,
 
-    #[structopt(
-        long = "check-all-message"
-    )]
+    #[structopt(long = "check-all-message")]
     pub check_all_message: bool,
+
+    #[structopt(short = "o", long = "output")]
+    pub output: String,
 }
 
-impl Argument{
-    pub fn validate(&mut self)->Result<(),String>{
-        if self.file.is_empty(){
-            if let Err(e) = Name::from_str(self.domain.clone().as_str()){
-                return Err(format!("domain name {} parse fail: {}", self.domain, e.to_string()))
+impl Argument {
+    pub fn validate(&mut self) -> Result<(), String> {
+        if self.file.is_empty() {
+            if let Err(e) = Name::from_str(self.domain.clone().as_str()) {
+                return Err(format!(
+                    "domain name {} parse fail: {}",
+                    self.domain,
+                    e.to_string()
+                ));
             }
-            if let Err(e) = RecordType::from_str(self.qty.as_str()){
-                return Err(format!("query type {} parse fail: {}", self.qty, e.to_string()))
+            if let Err(e) = RecordType::from_str(self.qty.as_str()) {
+                return Err(format!(
+                    "query type {} parse fail: {}",
+                    self.qty,
+                    e.to_string()
+                ));
             }
-        }else{
-            if fs::metadata(self.file.clone()).is_err(){
-                return Err(format!("open file {} error", self.file))
+        } else {
+            if fs::metadata(self.file.clone()).is_err() {
+                return Err(format!("open file {} error", self.file));
             }
+        }
+        if self.domain.is_empty() && self.file.is_empty() {
+            return Err(format!("must set domain or query file"));
         }
 
         if self.client == 0 {
@@ -306,6 +279,7 @@ impl Default for Argument {
             debug: false,
             source: IpAddr::from_str("0.0.0.0").unwrap(),
             check_all_message: false,
+            output: "".to_string(),
         }
     }
 }

@@ -3,7 +3,7 @@ snd is a dns traffic generator written by rust, it supports DNS over TCP/UDP and
 you can set almost every bit of the packet using arguments. 
 
 
-### 1. Usage
+#### 1. Usage
 
 ```
 a dns traffic generator
@@ -100,10 +100,47 @@ snd -m 20 -q 5 -s dns.google -p 853 -d baidu.com -t NS --protocol DOT
 
 ```
 
+#### 2. Save Report
+
+Using -o or --output save the result to file, if the filename end with ".json", it will print and save as json file; if the filename end with ".yaml" save as yaml file.
+
+```
+snd -m 20 -q 5 -s 8.8.8.8 -d google.com -t A --protocol tcp -o result.json
+snd -m 20 -q 5 -s 8.8.8.8 -d google.com -t A -o result.yaml
+
+```
+
+#### 3. Query From File
+
+Read dns query file instead set the query domain using -d argument.
+Using -d will only allow one domain for each test, but query file mode allow send dns query line by line in loop mode.
+
+Example of dns query.txt file: 
+```
+www.google.com A
+www.facebook.com A
+doubleclick.net NS
+google-analytics.com SOA
+akamaihd.net NS
+googlesyndication.com NS
+googleapis.com NS
+googleadservices.com NS
+www.youtube.com A
+www.twitter.com A
+scorecardresearch.com NS
+microsoft.com NS
+ytimg.com NS
+```
+
+Send query using query file mode:
+
+```
+snd -s 127.0.0.1 -m 200 -q 10 -c 1 -f query.txt
+
+```
 
 
-
-### 2. Load Test 
+#### 3. Load Test 
 
 Test Environments is a mac mini, install a local dns server for test. If you set up the environment at split dns server and snd load generator,
 maybe can get much higher qps number.

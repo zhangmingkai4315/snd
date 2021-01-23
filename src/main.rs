@@ -12,10 +12,14 @@ extern crate validator;
 #[macro_use]
 extern crate log;
 extern crate crossbeam_channel;
+extern crate num_cpus;
 extern crate rustls;
+extern crate serde_json;
+extern crate serde_yaml;
+extern crate toml;
 extern crate webpki;
 extern crate webpki_roots;
-extern crate num_cpus;
+
 // extern crate stream_histogram;
 
 mod arguments;
@@ -33,9 +37,9 @@ use structopt::StructOpt;
 
 fn main() {
     let mut arg: Argument = Argument::from_args();
-    if let Err(err)= arg.validate(){
+    if let Err(err) = arg.validate() {
         println!("validate error: {}", err.as_str());
-        return
+        return;
     }
     println!("{}", arg);
     let mut builder = Builder::from_default_env();

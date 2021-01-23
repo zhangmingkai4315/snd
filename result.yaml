@@ -1,0 +1,35 @@
+---
+basic:
+  response_code:
+    - key: No Error
+      value: 186208
+    - key: Non-Existent Domain
+      value: 13792
+  time_cost: PT5.784058S
+  start_time: "2021-01-23T21:14:47.069778+08:00"
+  end_time: "2021-01-23T21:14:52.853836+08:00"
+  query_total: 200000
+  response_total: 200000
+  qps: 34578.14661134163
+  query_rate: 100.0
+  min_lantency: 0.00002227
+  max_lantency: 3.667796114
+  mean_lantency: 0.0005679979152000004
+  p99: 0.00019731494277438466
+  p95: 0.00019731494277438466
+  p90: 0.00019731494277438466
+  p50: 0.00019731494277438466
+extension:
+  query_type:
+    - key: A
+      value: 62068
+    - key: NS
+      value: 110346
+    - key: SOA
+      value: 13794
+    - key: AAAA
+      value: 13792
+  response_type: []
+  answer_result: []
+  additional_result: []
+  authority_result: []

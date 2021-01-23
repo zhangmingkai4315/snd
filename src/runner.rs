@@ -1,7 +1,7 @@
 use crate::arguments::{Argument, Protocol};
 use crate::cache::Cache;
 use crate::histogram::Histogram;
-use crate::report::{QueryStatusStore, ReportType, RunnerReport};
+use crate::report::{QueryStatusStore, RunnerReport};
 use crate::workers::dot::DoTWorker;
 use crate::workers::{doh::DOHWorker, tcp::TCPWorker, udp::UDPWorker, MessageOrHeader, Worker};
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
@@ -93,8 +93,7 @@ impl Drop for Runner {
             .expect("receive close channel fail");
         self.report
             .set_histogram_report((*self.consumer.store.lock().unwrap()).clone());
-        self.report
-            .report(ReportType::Basic, self.arguments.clone());
+        self.report.report(self.arguments.clone());
     }
 }
 

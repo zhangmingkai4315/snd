@@ -6,6 +6,9 @@ use trust_dns_client::op::ResponseCode;
 use trust_dns_client::rr::RecordType;
 // use crate::histogram::{HistogramReport};
 use crate::histogram::HistogramReport;
+use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::Write;
 use trust_dns_client::op::{Header, Message};
 
 #[derive(Default, Clone)]
@@ -110,19 +113,28 @@ impl RunnerReport {
     pub fn set_histogram_report(&mut self, store: QueryStatusStore) {
         self.histogram = store.report;
     }
-    pub fn report(&self, output: impl ReportOutput, arguments: Argument) {
-        println!("{}", output.format(&self, arguments))
+
+    pub fn report(&self, arguments: Argument) {
+        let mut output = ReportType::Basic;
+        let report_file_name = arguments.output.to_ascii_lowercase();
+        if report_file_name.ends_with(".json") {
+            output = ReportType::JSON
+        } else if report_file_name.ends_with(".yaml") {
+            output = ReportType::YAML
+        }
+        output.format(self, arguments)
     }
 }
 
 pub trait ReportOutput {
-    fn format(&self, report: &RunnerReport, arguments: Argument) -> String;
+    fn format(&self, report: &RunnerReport, arguments: Argument);
 }
 
 #[allow(dead_code)]
 pub enum ReportType {
     Basic,
-    Color,
+    // TOML,
+    YAML,
     JSON,
 }
 
@@ -142,7 +154,64 @@ struct BasicStats {
     p90: f64,
     p50: f64,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+struct BasicStatsSerializable {
+    response_code: Vec<ItemKeyValue>,
+    time_cost: String,
+    start_time: String,
+    end_time: String,
+    query_total: usize,
+    response_total: usize,
+    qps: f64,
+    query_rate: f64,
+    min_lantency: f64,
+    max_lantency: f64,
+    mean_lantency: f64,
+    p99: f64,
+    p95: f64,
+    p90: f64,
+    p50: f64,
+}
+#[derive(Serialize, Deserialize, Debug)]
+struct ItemKeyValue {
+    key: String,
+    value: usize,
+}
+#[derive(Serialize, Deserialize, Debug)]
+struct ItemKeyValueRate {
+    key: String,
+    value: usize,
+    rate: f64,
+}
+
 impl BasicStats {
+    fn to_serializable(&self) -> BasicStatsSerializable {
+        BasicStatsSerializable {
+            response_code: self
+                .response_code
+                .iter()
+                .map(|a| ItemKeyValue {
+                    key: a.0.to_string(),
+                    value: a.1,
+                })
+                .collect(),
+            time_cost: (self.end_time - self.start_time).to_string(),
+            start_time: self.start_time.format("%+").to_string(),
+            end_time: self.end_time.format("%+").to_string(),
+            query_total: self.query_total,
+            response_total: self.response_total,
+            qps: self.qps,
+            query_rate: self.query_rate,
+            min_lantency: self.min_lantency,
+            max_lantency: self.max_lantency,
+            mean_lantency: self.mean_lantency,
+            p99: self.p99,
+            p95: self.p95,
+            p90: self.p90,
+            p50: self.p50,
+        }
+    }
     fn new(report: &RunnerReport) -> BasicStats {
         let response_code =
             format_code_result(&report.consumer_report.as_ref().unwrap().reply_code);
@@ -209,7 +278,61 @@ struct ExtensionStats {
     authority_result: Vec<(RecordType, usize)>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct ExtensionStatsSerializable {
+    query_type: Vec<ItemKeyValue>,
+    response_type: Vec<ItemKeyValueRate>,
+    answer_result: Vec<ItemKeyValue>,
+    additional_result: Vec<ItemKeyValue>,
+    authority_result: Vec<ItemKeyValue>,
+}
+
 impl ExtensionStats {
+    fn to_serializable(&self) -> ExtensionStatsSerializable {
+        ExtensionStatsSerializable {
+            query_type: self
+                .query_type
+                .iter()
+                .map(|a| ItemKeyValue {
+                    key: a.0.to_string(),
+                    value: a.1,
+                })
+                .collect(),
+            response_type: self
+                .response_type
+                .iter()
+                .map(|a| ItemKeyValueRate {
+                    key: a.0.to_string(),
+                    value: a.1,
+                    rate: a.2,
+                })
+                .collect(),
+            answer_result: self
+                .answer_result
+                .iter()
+                .map(|a| ItemKeyValue {
+                    key: a.0.to_string(),
+                    value: a.1,
+                })
+                .collect(),
+            additional_result: self
+                .additional_result
+                .iter()
+                .map(|a| ItemKeyValue {
+                    key: a.0.to_string(),
+                    value: a.1,
+                })
+                .collect(),
+            authority_result: self
+                .authority_result
+                .iter()
+                .map(|a| ItemKeyValue {
+                    key: a.0.to_string(),
+                    value: a.1,
+                })
+                .collect(),
+        }
+    }
     fn new(report: &RunnerReport) -> ExtensionStats {
         let mut query_type: Vec<_> = report
             .producer_report
@@ -263,48 +386,62 @@ impl ExtensionStats {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct CombinedResult {
+    basic: BasicStatsSerializable,
+    extension: ExtensionStatsSerializable,
+}
+
 impl ReportType {
-    fn basic(report: &RunnerReport, arguments: Argument) -> String {
-        let basic_info = BasicStats::new(report);
-        let extension_info = ExtensionStats::new(report);
+    fn formatted_data(report: &RunnerReport) -> CombinedResult {
+        CombinedResult {
+            basic: BasicStats::new(report).to_serializable(),
+            extension: ExtensionStats::new(report).to_serializable(),
+        }
+    }
+
+    fn basic(report: &RunnerReport, arguments: Argument) {
+        let formatted = ReportType::formatted_data(report);
+        let extension_info = formatted.extension;
+        let basic_info = formatted.basic;
 
         let query: Vec<_> = extension_info
             .query_type
             .iter()
-            .map(|a| format!("{}={}", a.0.to_string(), a.1))
+            .map(|a| format!("{}={}", a.key, a.value))
             .collect();
 
         let response: Vec<_> = extension_info
             .response_type
             .iter()
-            .map(|a| format!("{}={}({:.2}%)", a.0, a.1, a.2))
+            .map(|a| format!("{}={}({:.2}%)", a.key, a.value, a.rate))
             .collect();
 
         let response_code: String = basic_info
             .response_code
             .iter()
-            .map(|v| format!("{}={}", v.0, v.1))
+            .map(|a| format!("{}={}", a.key, a.value))
             .collect::<Vec<String>>()
             .join(",");
 
         let answer_result: String = extension_info
             .answer_result
             .iter()
-            .map(|v| format!("{}={}", v.0.to_string(), v.1))
+            .map(|a| format!("{}={}", a.key, a.value))
             .collect::<Vec<String>>()
             .join(",");
 
         let additional_result: String = extension_info
             .additional_result
             .iter()
-            .map(|v| format!("{}={}", v.0.to_string(), v.1))
+            .map(|a| format!("{}={}", a.key, a.value))
             .collect::<Vec<String>>()
             .join(",");
 
         let authority_result: String = extension_info
             .authority_result
             .iter()
-            .map(|v| format!("{}={}", v.0.to_string(), v.1))
+            .map(|a| format!("{}={}", a.key, a.value))
             .collect::<Vec<String>>()
             .join(",");
 
@@ -326,9 +463,9 @@ impl ReportType {
      95% Latency: {:?}
      90% Latency: {:?}
      50% Latency: {:?}",
-            (basic_info.end_time - basic_info.start_time).to_string(),
-            basic_info.start_time.format("%+"),
-            basic_info.end_time.format("%+"),
+            basic_info.time_cost,
+            basic_info.start_time,
+            basic_info.end_time,
             basic_info.query_total,
             query.join(","),
             basic_info.response_total,
@@ -357,22 +494,58 @@ impl ReportType {
             );
             out_put += extension_output.as_str();
         }
-        out_put
+        println!("{}", out_put);
     }
-    fn color(_report: &RunnerReport) -> String {
-        unimplemented!()
+    // fn toml(report: &RunnerReport,  arguments: Argument){
+    //     let formatted = ReportType::formatted_data(report);
+    //     let file = arguments.output;
+    //     match toml::to_string_pretty( &formatted){
+    //         Err(err) => {
+    //             error!("toml convert fail: {}", err.to_string())
+    //         },
+    //         Ok(v) => {
+    //             let mut buffer = File::create(file).expect("create file error");
+    //             if let Err(e) = buffer.write_all(v.as_bytes()){
+    //                 error!("{}", e.to_string())
+    //             }
+    //         }
+    //     }
+    // }
+    fn yaml(report: &RunnerReport, arguments: Argument) {
+        let formatted = ReportType::formatted_data(report);
+        let file = arguments.output;
+        match serde_yaml::to_string(&formatted) {
+            Err(err) => error!("yaml convert fail: {}", err.to_string()),
+            Ok(v) => {
+                let mut buffer = File::create(file).expect("create file error");
+                if let Err(e) = buffer.write_all(v.as_bytes()) {
+                    error!("{}", e.to_string())
+                }
+            }
+        }
     }
-    fn json(_report: &RunnerReport) -> String {
-        unimplemented!()
+    fn json(report: &RunnerReport, arguments: Argument) {
+        let formatted = ReportType::formatted_data(report);
+        let file = arguments.output;
+        match serde_json::to_string_pretty(&formatted) {
+            Err(err) => error!("json convert fail: {}", err.to_string()),
+            Ok(v) => {
+                let mut buffer = File::create(file).expect("create file error");
+                if let Err(e) = buffer.write_all(v.as_bytes()) {
+                    error!("{}", e.to_string())
+                }
+            }
+        }
     }
 }
 
 impl ReportOutput for ReportType {
-    fn format(&self, report: &RunnerReport, arguments: Argument) -> String {
+    fn format(&self, report: &RunnerReport, arguments: Argument) {
         match self {
             ReportType::Basic => ReportType::basic(report, arguments),
-            ReportType::Color => ReportType::color(report),
-            ReportType::JSON => ReportType::json(report),
+            // ReportType::TOML => ReportType::toml(report, arguments),
+            ReportType::YAML => ReportType::yaml(report, arguments),
+            ReportType::JSON => ReportType::json(report, arguments),
         }
     }
 }

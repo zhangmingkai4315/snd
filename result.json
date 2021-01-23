@@ -1,0 +1,52 @@
+{
+  "basic": {
+    "response_code": [
+      {
+        "key": "No Error",
+        "value": 186208
+      },
+      {
+        "key": "Non-Existent Domain",
+        "value": 13792
+      }
+    ],
+    "time_cost": "PT2.337833S",
+    "start_time": "2021-01-23T21:12:15.095630+08:00",
+    "end_time": "2021-01-23T21:12:17.433463+08:00",
+    "query_total": 200000,
+    "response_total": 200000,
+    "qps": 85579.80316645271,
+    "query_rate": 100.0,
+    "min_lantency": 0.000022425,
+    "max_lantency": 0.167782677,
+    "mean_lantency": 0.00020573165505999977,
+    "p99": 0.0003595079962574849,
+    "p95": 0.0002581835379245266,
+    "p90": 0.0002092966708002153,
+    "p50": 0.00016916596015602805
+  },
+  "extension": {
+    "query_type": [
+      {
+        "key": "A",
+        "value": 62068
+      },
+      {
+        "key": "NS",
+        "value": 110346
+      },
+      {
+        "key": "SOA",
+        "value": 13794
+      },
+      {
+        "key": "AAAA",
+        "value": 13792
+      }
+    ],
+    "response_type": [],
+    "answer_result": [],
+    "additional_result": [],
+    "authority_result": []
+  }
+}
