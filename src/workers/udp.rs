@@ -28,7 +28,6 @@ impl UDPWorker {
         let server_port = format!("{}:{}", arguments.server, arguments.port);
         let source_ip_addr = format!("{}:0", arguments.source);
 
-
         // socket.set_nonblocking(true).expect("set udp unblock fail");
         let edns_size_local = arguments.edns_size as usize;
         let check_all_message = arguments.check_all_message;
@@ -39,7 +38,6 @@ impl UDPWorker {
                 .connect(server_port.clone())
                 .expect("unable to connect to server");
             loop {
-
                 // TODO: how about each thread has own producer?
                 let data = match rx.lock().unwrap().recv() {
                     Ok(data) => data,

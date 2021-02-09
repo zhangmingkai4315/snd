@@ -3,10 +3,10 @@ use crate::arguments::Argument;
 use crossbeam_channel::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use tokio::net::UdpSocket;
+use tokio::runtime;
 use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
-use tokio::runtime;
-use tokio::net::UdpSocket;
 
 pub struct UDPAsyncWorker {
     write_thread: Option<std::thread::JoinHandle<()>>,
@@ -33,12 +33,18 @@ impl UDPAsyncWorker {
         let result_sender_local = result_sender.clone();
 
         let thread = std::thread::spawn(move || {
-            let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+            let rt = runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap();
             let handler = rt.spawn(async move {
                 // let tx = tx.clone();
-                let socket = UdpSocket::bind(source_ip_addr).await.expect("unable to bind to server");
+                let socket = UdpSocket::bind(source_ip_addr)
+                    .await
+                    .expect("unable to bind to server");
                 socket
-                    .connect(server_port).await
+                    .connect(server_port)
+                    .await
                     .expect("unable to connect to server");
                 loop {
                     let data = match rx.lock().unwrap().recv() {
@@ -57,10 +63,9 @@ impl UDPAsyncWorker {
                         let mut buffer = vec![0; edns_size_local];
                         if let Ok(size) = socket.recv(&mut buffer).await {
                             if let Ok(message) = Message::from_bytes(&buffer[..size]) {
-                                if let Err(e) = result_sender_local.send(MessageOrHeader::Message((
-                                    message,
-                                    start.elapsed().as_secs_f64(),
-                                ))) {
+                                if let Err(e) = result_sender_local.send(MessageOrHeader::Message(
+                                    (message, start.elapsed().as_secs_f64()),
+                                )) {
                                     error!("send packet: {:?}", e);
                                 };
                             } else {
@@ -82,7 +87,7 @@ impl UDPAsyncWorker {
                             }
                         }
                     }
-                };
+                }
             });
             rt.block_on(async {
                 handler.await;
