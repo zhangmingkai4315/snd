@@ -13,7 +13,7 @@ pub struct UDPWorker {
 impl Worker for UDPWorker {
     fn block(&mut self) {
         if let Some(handler) = self.write_thread.take() {
-            handler.join().expect("fail to join doh thread");
+            handler.join().expect("fail to join udp thread");
         }
     }
 }
@@ -27,17 +27,19 @@ impl UDPWorker {
         let rx = receiver.clone();
         let server_port = format!("{}:{}", arguments.server, arguments.port);
         let source_ip_addr = format!("{}:0", arguments.source);
-        let socket = UdpSocket::bind(source_ip_addr).unwrap();
 
-        socket
-            .connect(server_port)
-            .expect("unable to connect to server");
+
         // socket.set_nonblocking(true).expect("set udp unblock fail");
         let edns_size_local = arguments.edns_size as usize;
         let check_all_message = arguments.check_all_message;
 
         let thread = std::thread::spawn(move || {
+            let socket = UdpSocket::bind(source_ip_addr.clone()).unwrap();
+            socket
+                .connect(server_port.clone())
+                .expect("unable to connect to server");
             loop {
+
                 // TODO: how about each thread has own producer?
                 let data = match rx.lock().unwrap().recv() {
                     Ok(data) => data,

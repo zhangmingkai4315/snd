@@ -34,9 +34,6 @@ impl TCPWorker {
         // stream.set_nonblocking(true).expect("set tcp unblock fail");
         let thread = std::thread::spawn(move || {
             // TODO : tcp source ip setting
-            // let builder = TcpBuilder::new_v4().expect("unable using tcp v4 resource");
-            // let source_ip_addr = format!("{}:0", arguments.source);
-            // let sock = TcpListener::bind(source_ip_addr).unwrap();
             let mut stream = TcpStream::connect(server_port.clone())
                 .expect(format!("unable to connect to server :{}", server_port).as_str());
 

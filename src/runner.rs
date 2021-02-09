@@ -3,7 +3,7 @@ use crate::cache::Cache;
 use crate::histogram::Histogram;
 use crate::report::{QueryStatusStore, RunnerReport};
 use crate::workers::dot::DoTWorker;
-use crate::workers::{doh::DOHWorker, tcp::TCPWorker, udp::UDPWorker, MessageOrHeader, Worker};
+use crate::workers::{doh::DOHWorker, tcp::TCPWorker, udp::UDPWorker, udp_async::UDPAsyncWorker, MessageOrHeader, Worker};
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
@@ -33,7 +33,7 @@ impl Runner {
             let result_sender = result_sender.clone();
             match arguments.protocol {
                 Protocol::UDP => {
-                    workers.push(Box::new(UDPWorker::new(
+                    workers.push(Box::new(UDPAsyncWorker::new(
                         arguments.clone(),
                         receiver.clone(),
                         result_sender,
