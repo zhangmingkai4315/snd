@@ -115,7 +115,7 @@ OPTIONS:
     -m, --max <max>                                max dns packets will be send [default: 100]
     -c, --client <client>                          concurrent clients numbers, set to 0 will replace with the number of cpu cores [default: 0]
     -f, --file <file>                              the dns query file, default using -d for single domain query [default: \"\"]
-    -o, --output <file>                            format output report to stdout, .json or .yaml file [default: \"\"]
+    -o, --output <file>                            format output report to stdout, .json or .yaml file [default: \"text\"]
         --edns-size <edns-size>                    set opt max EDNS buffer size [default: 1232]
         --protocol <protocol>                      the packet protocol for send dns request [default: UDP]
                                                    support protocols [UDP, TCP, DOT, DOH]
@@ -131,6 +131,7 @@ FLAGS:
         --disable-rd           RD (recursion desired) bit in the query
         --enable-cd            CD (checking disabled) bit in the query
         --enable-dnssec        enable dnssec
+        --enable-async         async send packet mode
 HELP:
     -h, --help                 Prints help information
 VERSION:
@@ -216,8 +217,9 @@ pub struct Argument {
 
     #[structopt(long = "check-all-message")]
     pub check_all_message: bool,
-
-    #[structopt(short = "o", long = "output")]
+    #[structopt(long = "enable-async")]
+    pub enable_async: bool,
+    #[structopt(short = "o", long = "output", default_value = "text")]
     pub output: String,
 }
 
@@ -277,6 +279,7 @@ impl Default for Argument {
             disable_edns: false,
             edns_size: 0,
             debug: false,
+            enable_async: false,
             source: IpAddr::from_str("0.0.0.0").unwrap(),
             check_all_message: false,
             output: "".to_string(),
@@ -306,7 +309,8 @@ Transport Protocol: {:?}
        Enable EDNS: {},
          EDNS Size: {},
      Enable DNSSEC: {},
- Check All Message: {}\n",
+ Check All Message: {},
+      Async Enable: {}\n",
             env!("CARGO_PKG_VERSION"),
             {
                 if self.file.is_empty() {
@@ -350,7 +354,8 @@ Transport Protocol: {:?}
             self.disable_edns,
             self.edns_size,
             self.enable_dnssec,
-            self.check_all_message
+            self.check_all_message,
+            self.enable_async,
         )
     }
 }

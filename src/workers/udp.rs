@@ -45,8 +45,18 @@ impl UDPWorker {
                         break;
                     }
                 };
-                debug!("send {:?}", data.as_slice());
+                {}
                 let start = Instant::now();
+                // if let Ok(message) = Header::from_bytes(&data[..HEADER_SIZE]) {
+                //                 if let Err(e) = result_sender.send(MessageOrHeader::Header((
+                //                     message,
+                //                     start.elapsed().as_secs_f64(),
+                //                 ))) {
+                //                     error!("send packet: {:?}", e);
+                //                 };
+                //             } else {
+                //                 error!("parse dns message error");
+                //             }
                 if let Err(e) = socket.send(data.as_slice()) {
                     error!("send error : {}", e);
                 };

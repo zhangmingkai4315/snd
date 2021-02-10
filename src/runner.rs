@@ -32,35 +32,43 @@ impl Runner {
         let producer = QueryProducer::new(arguments.clone(), sender.clone());
 
         let (result_sender, result_receiver) = bounded(arguments.client);
-        for _i in 0..origin_arguments.client {
-            let result_sender = result_sender.clone();
-            match arguments.protocol {
-                Protocol::UDP => {
-                    workers.push(Box::new(UDPAsyncWorker::new(
+        if origin_arguments.enable_async {
+            workers.push(Box::new(UDPAsyncWorker::new(
+                arguments.clone(),
+                receiver.clone(),
+                result_sender.clone(),
+            )));
+        } else {
+            for _i in 0..origin_arguments.client {
+                let result_sender = result_sender.clone();
+                match arguments.protocol {
+                    Protocol::UDP => {
+                        workers.push(Box::new(UDPWorker::new(
+                            arguments.clone(),
+                            receiver.clone(),
+                            result_sender,
+                        )));
+                    }
+                    Protocol::TCP => {
+                        workers.push(Box::new(TCPWorker::new(
+                            arguments.clone(),
+                            receiver.clone(),
+                            result_sender,
+                        )));
+                    }
+                    Protocol::DOT => {
+                        workers.push(Box::new(DoTWorker::new(
+                            arguments.clone(),
+                            receiver.clone(),
+                            result_sender,
+                        )));
+                    }
+                    Protocol::DOH => workers.push(Box::new(DOHWorker::new(
                         arguments.clone(),
                         receiver.clone(),
                         result_sender,
-                    )));
+                    ))),
                 }
-                Protocol::TCP => {
-                    workers.push(Box::new(TCPWorker::new(
-                        arguments.clone(),
-                        receiver.clone(),
-                        result_sender,
-                    )));
-                }
-                Protocol::DOT => {
-                    workers.push(Box::new(DoTWorker::new(
-                        arguments.clone(),
-                        receiver.clone(),
-                        result_sender,
-                    )));
-                }
-                Protocol::DOH => workers.push(Box::new(DOHWorker::new(
-                    arguments.clone(),
-                    receiver.clone(),
-                    result_sender,
-                ))),
             }
         }
 
