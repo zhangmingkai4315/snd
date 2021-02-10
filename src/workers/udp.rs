@@ -45,7 +45,6 @@ impl UDPWorker {
                         break;
                     }
                 };
-                {}
                 let start = Instant::now();
                 // if let Ok(message) = Header::from_bytes(&data[..HEADER_SIZE]) {
                 //                 if let Err(e) = result_sender.send(MessageOrHeader::Header((

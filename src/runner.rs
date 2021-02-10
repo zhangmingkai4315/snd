@@ -11,6 +11,7 @@ use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct Runner {
     arguments: Argument,
@@ -133,6 +134,14 @@ impl QueryProducer {
         let mut cache = Cache::new(&argument.clone());
         let store = Arc::new(Mutex::new(QueryStatusStore::new()));
         let thread_store = store.clone();
+        let mut stop_at = 0;
+        if argument.until_stop > 0 {
+            stop_at = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + argument.until_stop as u64;
+        }
         std::thread::spawn(move || {
             let limiter = rate_limiter.as_ref();
             loop {
@@ -146,7 +155,14 @@ impl QueryProducer {
                     _ => ready = true,
                 }
                 if ready == true {
-                    if current_counter != max_counter {
+                    if (max_counter != 0 && current_counter <= max_counter)
+                        || (stop_at != 0
+                            && SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs()
+                                <= stop_at)
+                    {
                         current_counter = current_counter + 1;
                         let (data, query_type) = cache.build_message();
                         if let Err(e) = sender.send(data) {
@@ -156,6 +172,7 @@ impl QueryProducer {
                             v.update_query(query_type);
                         }
                     } else {
+                        info!("stop send packet to wire");
                         break;
                     }
                 }

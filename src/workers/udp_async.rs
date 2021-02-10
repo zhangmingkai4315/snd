@@ -28,8 +28,6 @@ impl UDPAsyncWorker {
         let rx = receiver.clone();
         let server_port = format!("{}:{}", arguments.server, arguments.port);
         let source_ip_addr = format!("{}:0", arguments.source);
-        let edns_size_local = arguments.edns_size as usize;
-        let check_all_message = arguments.check_all_message;
         let mut thread_handlers = vec![];
         let thread = std::thread::spawn(move || {
             let rt = runtime::Builder::new_multi_thread()
@@ -44,7 +42,7 @@ impl UDPAsyncWorker {
                 .build()
                 .unwrap();
 
-            for i in 1..=arguments.client {
+            for _i in 1..=arguments.client {
                 let rx = rx.clone();
                 let result_send_local = result_sender.clone();
                 let source_ip_addr = source_ip_addr.clone();

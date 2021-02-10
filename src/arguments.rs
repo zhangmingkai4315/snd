@@ -111,6 +111,7 @@ OPTIONS:
     -p, --port <port>                              the dns server port number [default: 53]
     -d, --domain <domain>                          domain name for dns query [default: example.com]
     -t, --type <qty>                               dns query type [default: A]
+    -T, --time <time>                              how long it will send until stop [default: 0]
     -q, --qps <qps>                                dns query per second [default: 10]
     -m, --max <max>                                max dns packets will be send [default: 100]
     -c, --client <client>                          concurrent clients numbers, set to 0 will replace with the number of cpu cores [default: 0]
@@ -165,8 +166,11 @@ pub struct Argument {
 
     #[structopt(short = "q", long = "qps", default_value = "10")]
     pub qps: usize,
-    #[structopt(short = "m", long = "max", default_value = "100")]
+    #[structopt(short = "m", long = "max", default_value = "0")]
     pub max: usize,
+
+    #[structopt(short = "T", long = "time", default_value = "0")]
+    pub until_stop: usize,
 
     #[structopt(short = "c", long = "client", default_value = "0")]
     pub client: usize,
@@ -248,7 +252,9 @@ impl Argument {
         if self.domain.is_empty() && self.file.is_empty() {
             return Err(format!("must set domain or query file"));
         }
-
+        if self.until_stop == 0 && self.max == 0 {
+            return Err(format!("must set max query [-m] or time limit [-T]"));
+        }
         if self.client == 0 {
             self.client = num_cpus::get();
         }
@@ -270,6 +276,7 @@ impl Default for Argument {
             domain: "google.com".to_string(),
             qty: "NS".to_string(),
             timeout: 5,
+            until_stop: 0,
             packet_id: 0,
             doh_server_method: Default::default(),
             doh_server: "".to_string(),
@@ -302,6 +309,7 @@ Transport Protocol: {:?}
      Client Number: {}
   Query Per Second: {}
  Max Packet Number: {},
+   Time Until Stop: {},
 ------------ Advance Setting ---------
          Packet ID: {}
     Turn On RD Bit: {},
@@ -343,6 +351,13 @@ Transport Protocol: {:?}
                 }
             },
             self.max,
+            {
+                if self.until_stop == 0 {
+                    "unlimited".to_owned()
+                } else {
+                    format!("{}s", self.until_stop)
+                }
+            },
             {
                 match self.packet_id {
                     0 => "random".to_owned(),
