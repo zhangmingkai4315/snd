@@ -47,6 +47,8 @@ impl UDPAsyncWorker {
                 let result_send_local = result_sender.clone();
                 let source_ip_addr = source_ip_addr.clone();
                 let server_port = server_port.clone();
+                let edns_size_local =  arguments.edns_size.into();
+                let check_all_message = arguments.check_all_message;
                 let task = async move {
                     debug!(
                         "before bind in thread : {:?}",
@@ -73,66 +75,66 @@ impl UDPAsyncWorker {
                             std::thread::current().name()
                         );
 
-                        if let Ok(message) = Header::from_bytes(&data[..HEADER_SIZE]) {
-                            if let Err(e) = result_send_local.send(MessageOrHeader::Header((
-                                message,
-                                start.elapsed().as_secs_f64(),
-                            ))) {
-                                error!("send packet: {:?}", e);
-                            };
-                        } else {
-                            error!("parse dns message error");
-                        }
-                    }
-                    //     if let Err(e) = socket.send(data.as_slice()).await {
-                    //         error!("send error : {}", e);
-                    //     };
-                    //     if check_all_message == true {
-                    //         let mut buffer = vec![0; edns_size_local];
-                    //         if let Ok(size) = socket.recv(&mut buffer).await {
-                    //             if let Ok(message) = Message::from_bytes(&buffer[..size]) {
-                    //                 if let Err(e) =
-                    //                 result_send_local.send(MessageOrHeader::Message((
-                    //                     message,
-                    //                     start.elapsed().as_secs_f64(),
-                    //                 )))
-                    //                 {
-                    //                     error!("send packet: {:?}", e);
-                    //                 };
-                    //             } else {
-                    //                 error!("parse dns message error");
-                    //             }
-                    //         }
+                    //     if let Ok(message) = Header::from_bytes(&data[..HEADER_SIZE]) {
+                    //         if let Err(e) = result_send_local.send(MessageOrHeader::Header((
+                    //             message,
+                    //             start.elapsed().as_secs_f64(),
+                    //         ))) {
+                    //             error!("send packet: {:?}", e);
+                    //         };
                     //     } else {
-                    //         let mut buffer = vec![0; HEADER_SIZE];
-                    //         debug!(
-                    //             "before recv in thread : {:?}",
-                    //             std::thread::current().name()
-                    //         );
-                    //         if let Ok(size) = socket.recv(&mut buffer).await {
-                    //             if let Ok(message) = Header::from_bytes(&buffer[..size]) {
-                    //                 if let Err(e) = result_send_local.send(MessageOrHeader::Header(
-                    //                     (message, start.elapsed().as_secs_f64()),
-                    //                 )) {
-                    //                     error!("send packet: {:?}", e);
-                    //                 };
-                    //                 debug!(
-                    //                     "send to channel in thread : {:?}",
-                    //                     std::thread::current().name()
-                    //                 );
-                    //             } else {
-                    //                 error!("parse dns message error");
-                    //             }
-                    //         }
+                    //         error!("parse dns message error");
                     //     }
                     // }
+                        if let Err(e) = socket.send(data.as_slice()).await {
+                            error!("send error : {}", e);
+                        };
+                        if check_all_message == true {
+                            let mut buffer = vec![0; edns_size_local];
+                            if let Ok(size) = socket.recv(&mut buffer).await {
+                                if let Ok(message) = Message::from_bytes(&buffer[..size]) {
+                                    if let Err(e) =
+                                    result_send_local.send(MessageOrHeader::Message((
+                                        message,
+                                        start.elapsed().as_secs_f64(),
+                                    )))
+                                    {
+                                        error!("send packet: {:?}", e);
+                                    };
+                                } else {
+                                    error!("parse dns message error");
+                                }
+                            }
+                        } else {
+                            let mut buffer = vec![0; HEADER_SIZE];
+                            debug!(
+                                "before recv in thread : {:?}",
+                                std::thread::current().name()
+                            );
+                            if let Ok(size) = socket.recv(&mut buffer).await {
+                                if let Ok(message) = Header::from_bytes(&buffer[..size]) {
+                                    if let Err(e) = result_send_local.send(MessageOrHeader::Header(
+                                        (message, start.elapsed().as_secs_f64()),
+                                    )) {
+                                        error!("send packet: {:?}", e);
+                                    };
+                                    debug!(
+                                        "send to channel in thread : {:?}",
+                                        std::thread::current().name()
+                                    );
+                                } else {
+                                    error!("parse dns message error");
+                                }
+                            }
+                        }
+                    }
                 };
                 thread_handlers.push(rt.spawn(task));
             }
 
             rt.block_on(async {
                 for i in thread_handlers {
-                    i.await;
+                    let _ = i.await;
                 }
             });
             debug!("udp worker thread exit success");
