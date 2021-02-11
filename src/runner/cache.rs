@@ -164,7 +164,7 @@ where
 #[cfg(test)]
 mod test {
     use crate::arguments::Argument;
-    use crate::cache::Cache;
+    use crate::runner::cache::Cache;
     use trust_dns_client::proto::op::Message;
     #[test]
     fn test_cache() {

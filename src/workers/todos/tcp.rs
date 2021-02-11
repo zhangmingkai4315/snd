@@ -14,7 +14,7 @@ pub struct TCPWorker {
 }
 
 impl Worker for TCPWorker {
-    fn block(&mut self) {
+    fn run(&mut self) {
         if let Some(handler) = self.write_thread.take() {
             handler.join().expect("fail to join tcp thread");
         }

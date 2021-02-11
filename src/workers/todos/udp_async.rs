@@ -12,7 +12,7 @@ pub struct UDPAsyncWorker {
     write_thread: Option<std::thread::JoinHandle<()>>,
 }
 impl Worker for UDPAsyncWorker {
-    fn block(&mut self) {
+    fn run(&mut self) {
         if let Some(handler) = self.write_thread.take() {
             handler.join().expect("fail to join udp thread");
         }
@@ -47,7 +47,7 @@ impl UDPAsyncWorker {
                 let result_send_local = result_sender.clone();
                 let source_ip_addr = source_ip_addr.clone();
                 let server_port = server_port.clone();
-                let edns_size_local =  arguments.edns_size.into();
+                let edns_size_local = arguments.edns_size.into();
                 let check_all_message = arguments.check_all_message;
                 let task = async move {
                     debug!(
@@ -75,17 +75,17 @@ impl UDPAsyncWorker {
                             std::thread::current().name()
                         );
 
-                    //     if let Ok(message) = Header::from_bytes(&data[..HEADER_SIZE]) {
-                    //         if let Err(e) = result_send_local.send(MessageOrHeader::Header((
-                    //             message,
-                    //             start.elapsed().as_secs_f64(),
-                    //         ))) {
-                    //             error!("send packet: {:?}", e);
-                    //         };
-                    //     } else {
-                    //         error!("parse dns message error");
-                    //     }
-                    // }
+                        //     if let Ok(message) = Header::from_bytes(&data[..HEADER_SIZE]) {
+                        //         if let Err(e) = result_send_local.send(MessageOrHeader::Header((
+                        //             message,
+                        //             start.elapsed().as_secs_f64(),
+                        //         ))) {
+                        //             error!("send packet: {:?}", e);
+                        //         };
+                        //     } else {
+                        //         error!("parse dns message error");
+                        //     }
+                        // }
                         if let Err(e) = socket.send(data.as_slice()).await {
                             error!("send error : {}", e);
                         };
@@ -94,10 +94,10 @@ impl UDPAsyncWorker {
                             if let Ok(size) = socket.recv(&mut buffer).await {
                                 if let Ok(message) = Message::from_bytes(&buffer[..size]) {
                                     if let Err(e) =
-                                    result_send_local.send(MessageOrHeader::Message((
-                                        message,
-                                        start.elapsed().as_secs_f64(),
-                                    )))
+                                        result_send_local.send(MessageOrHeader::Message((
+                                            message,
+                                            start.elapsed().as_secs_f64(),
+                                        )))
                                     {
                                         error!("send packet: {:?}", e);
                                     };

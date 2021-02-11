@@ -23,9 +23,6 @@ extern crate webpki_roots;
 // extern crate stream_histogram;
 
 mod arguments;
-mod cache;
-mod histogram;
-mod report;
 mod runner;
 mod workers;
 
@@ -50,5 +47,6 @@ fn main() {
         }
     });
     builder.init();
-    Runner::new(arg);
+    let mut runner = Runner::new(arg);
+    runner.run();
 }

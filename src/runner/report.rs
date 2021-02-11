@@ -5,15 +5,19 @@ use std::collections::HashMap;
 use trust_dns_client::op::ResponseCode;
 use trust_dns_client::rr::RecordType;
 // use crate::histogram::{HistogramReport};
-use crate::histogram::HistogramReport;
+use crate::runner::histogram::HistogramReport;
+use crate::runner::runner::merge_map;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Write;
+use std::ops::Add;
 use trust_dns_client::op::{Header, Message};
 
 #[derive(Default, Clone)]
 pub struct QueryStatusStore {
-    total: usize,
+    query_total: usize,
+    receive_total: usize,
+    send_duration: Option<std::time::Duration>,
     last_update: Option<std::time::SystemTime>,
     query_type: HashMap<u16, usize>,
     answer_type: HashMap<u16, usize>,
@@ -23,10 +27,57 @@ pub struct QueryStatusStore {
     report: Option<HistogramReport>,
 }
 
+impl Add<QueryStatusStore> for QueryStatusStore {
+    type Output = QueryStatusStore;
+
+    fn add(self, rhs: QueryStatusStore) -> Self::Output {
+        Self {
+            query_total: self.query_total + rhs.query_total,
+            receive_total: self.receive_total + rhs.receive_total,
+            send_duration: {
+                match (self.send_duration, rhs.send_duration) {
+                    (Some(v1), Some(v2)) => {
+                        if v1 > v2 {
+                            Some(v1)
+                        } else {
+                            Some(v2)
+                        }
+                    }
+                    (Some(v1), None) => Some(v1),
+                    (None, Some(v2)) => Some(v2),
+                    _ => None,
+                }
+            },
+            last_update: {
+                match (self.last_update, rhs.last_update) {
+                    (Some(v1), Some(v2)) => {
+                        if v1 > v2 {
+                            Some(v1)
+                        } else {
+                            Some(v2)
+                        }
+                    }
+                    (Some(v1), None) => Some(v1),
+                    (None, Some(v2)) => Some(v2),
+                    _ => None,
+                }
+            },
+            query_type: merge_map(&self.query_type, &rhs.query_type),
+            answer_type: merge_map(&self.answer_type, &rhs.answer_type),
+            authority_type: merge_map(&self.authority_type, &rhs.authority_type),
+            additional_type: merge_map(&self.additional_type, &rhs.additional_type),
+            reply_code: merge_map(&self.reply_code, &rhs.reply_code),
+            report: None,
+        }
+    }
+}
+
 impl QueryStatusStore {
     pub fn new() -> QueryStatusStore {
         QueryStatusStore {
-            total: 0,
+            query_total: 0,
+            receive_total: 0,
+            send_duration: None,
             last_update: None,
             query_type: Default::default(),
             answer_type: Default::default(),
@@ -36,11 +87,41 @@ impl QueryStatusStore {
             report: None,
         }
     }
+    pub fn new_from_query_status(query_status: HashMap<u16, usize>) -> QueryStatusStore {
+        let mut query_total = 0;
+        for (_, v) in query_status.clone() {
+            query_total += v;
+        }
+        QueryStatusStore {
+            query_total: query_total,
+            receive_total: 0,
+            send_duration: None,
+            last_update: Some(std::time::SystemTime::now()),
+            query_type: query_status.clone(),
+            answer_type: Default::default(),
+            authority_type: Default::default(),
+            additional_type: Default::default(),
+            reply_code: Default::default(),
+            report: None,
+        }
+    }
+    pub fn set_query_total(&mut self, total: usize) {
+        self.query_total = total;
+    }
+    pub fn set_receive_total(&mut self, total: usize) {
+        self.query_total = total;
+    }
+    pub fn set_send_duration(&mut self, duration: std::time::Duration) {
+        self.send_duration = Some(duration);
+    }
     #[allow(dead_code)]
     pub fn update_query(&mut self, query_type: u16) {
-        self.total = self.total + 1;
+        self.query_total = self.query_total + 1;
         let count = self.query_type.entry(query_type).or_insert(0);
         *count += 1;
+    }
+    pub fn get_query(&mut self) -> HashMap<u16, usize> {
+        self.query_type.clone()
     }
 
     pub fn update_histogram_report(&mut self, report: Option<HistogramReport>) {
@@ -51,14 +132,14 @@ impl QueryStatusStore {
         // only for message type
 
         // header type only calculate the counter of response code.
-        self.total = self.total + 1;
+        self.query_total = self.query_total + 1;
         let r_code = header.response_code();
         let count = self.reply_code.entry(r_code).or_insert(0);
         *count += 1;
         self.last_update = Some(std::time::SystemTime::now());
     }
     pub fn update_response_from_message(&mut self, message: &Message) {
-        self.total = self.total + 1;
+        self.query_total = self.query_total + 1;
         let query_type = u16::from(message.queries()[0].query_type());
         let count = self.query_type.entry(query_type).or_insert(0);
         *count += 1;
@@ -225,11 +306,11 @@ impl BasicStats {
             .expect("thread exit abnormal")
             .into();
         let duration_second = (end_time - start_time).num_milliseconds() as f64 / 1000 as f64;
-        let qps = report.consumer_report.as_ref().unwrap().total as f64 / duration_second;
-        let query_total = report.producer_report.as_ref().unwrap().total;
-        let response_total = report.producer_report.as_ref().unwrap().total;
-        let query_rate = report.consumer_report.as_ref().unwrap().total as f64 * 100.0
-            / report.producer_report.as_ref().unwrap().total as f64;
+        let qps = report.consumer_report.as_ref().unwrap().query_total as f64 / duration_second;
+        let query_total = report.producer_report.as_ref().unwrap().query_total;
+        let response_total = report.producer_report.as_ref().unwrap().query_total;
+        let query_rate = report.consumer_report.as_ref().unwrap().query_total as f64 * 100.0
+            / report.producer_report.as_ref().unwrap().query_total as f64;
 
         if report.histogram.is_none() {
             BasicStats {
