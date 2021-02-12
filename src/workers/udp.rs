@@ -25,7 +25,7 @@ impl Worker for UDPWorker {
         let edns_size_local = self.arguments.edns_size as usize;
         let check_all_message = self.arguments.check_all_message;
         let socket = UdpSocket::bind(source_ip_addr.clone()).unwrap();
-        socket.set_nonblocking(true);
+        // socket.set_nonblocking(true);
         socket
             .connect(server_port.clone())
             .expect("unable to connect to server");
@@ -39,47 +39,12 @@ impl Worker for UDPWorker {
             let begin_send = std::time::SystemTime::now();
             let mut end_send = std::time::SystemTime::now();
 
-            'outer: loop {
+            loop {
                 let data = match producer.retrieve() {
                     PacketGeneratorStatus::Success(data) => data,
                     PacketGeneratorStatus::Wait => continue,
                     PacketGeneratorStatus::Stop => {
-                        debug!("receive stop signal for quit worker waiting for 10 seconds");
-                        let begin = std::time::SystemTime::now();
-                        loop {
-                            if begin.elapsed().unwrap() > std::time::Duration::from_secs(10) {
-                                break 'outer;
-                            }
-                            if check_all_message == true {
-                                let mut buffer = vec![0; edns_size_local];
-                                if let Ok(size) = socket.recv(&mut buffer) {
-                                    if let Ok(message) = Message::from_bytes(&buffer[..size]) {
-                                        if let Err(e) = result_sender
-                                            .send(MessageOrHeader::Message((message, 0.0)))
-                                        {
-                                            error!("send packet: {:?}", e);
-                                        };
-                                    } else {
-                                        error!("parse dns message error");
-                                    }
-                                    receive_counter += 1;
-                                }
-                            } else {
-                                let mut buffer = vec![0; HEADER_SIZE];
-                                if let Ok(size) = socket.recv(&mut buffer) {
-                                    if let Ok(message) = Header::from_bytes(&buffer[..size]) {
-                                        if let Err(e) = result_sender
-                                            .send(MessageOrHeader::Header((message, 0.0)))
-                                        {
-                                            error!("send packet: {:?}", e);
-                                        };
-                                    } else {
-                                        error!("parse dns message error");
-                                    }
-                                    receive_counter += 1;
-                                }
-                            }
-                        }
+                        break;
                     }
                 };
                 let start = Instant::now();

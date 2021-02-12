@@ -328,7 +328,7 @@ Transport Protocol: {:?}
                 }
             },
             {
-                if self.file.is_empty() {
+                if self.file.is_empty() == false {
                     "from query file"
                 } else {
                     self.qty.as_str()
