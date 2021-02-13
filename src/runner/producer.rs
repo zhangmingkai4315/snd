@@ -1,7 +1,7 @@
 use crate::runner::cache::Cache;
 use crate::runner::report::QueryStatusStore;
 use crate::utils::Argument;
-use governor::clock::DefaultClock;
+use governor::clock::{Clock, DefaultClock, QuantaClock, QuantaInstant, Reference};
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
@@ -18,7 +18,7 @@ pub struct QueryProducer {
 
 pub enum PacketGeneratorStatus<'a> {
     Success(&'a [u8]),
-    Wait,
+    Wait(u64),
     Stop,
 }
 
@@ -67,9 +67,15 @@ impl QueryProducer {
     }
     pub fn retrieve(&mut self) -> PacketGeneratorStatus {
         if let Some(limiter) = self.rate_limiter.as_ref() {
-            if limiter.check().is_err() {
-                return PacketGeneratorStatus::Wait;
-            }
+            match limiter.check() {
+                Err(err) => {
+                    let sleep = err
+                        .earliest_possible()
+                        .duration_since(QuantaClock::default().now());
+                    return PacketGeneratorStatus::Wait(sleep.into());
+                }
+                _ => {}
+            };
         }
         // max counter limit && max duration limit
         if (self.max_counter != 0 && self.counter >= self.max_counter)

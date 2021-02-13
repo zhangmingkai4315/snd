@@ -2,11 +2,12 @@ use super::{MessageOrHeader, Worker, HEADER_SIZE};
 use crate::runner::report::QueryStatusStore;
 use crate::runner::{producer::PacketGeneratorStatus, QueryProducer};
 use crate::utils::Argument;
+use chrono::Duration;
 use crossbeam_channel::{Receiver, Sender};
 use std::collections::HashMap;
 use std::net::UdpSocket;
 use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
+use std::thread::{sleep, JoinHandle};
 use std::time::Instant;
 use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
@@ -42,7 +43,10 @@ impl Worker for UDPWorker {
             loop {
                 let data = match producer.retrieve() {
                     PacketGeneratorStatus::Success(data) => data,
-                    PacketGeneratorStatus::Wait => continue,
+                    PacketGeneratorStatus::Wait(wait) => {
+                        sleep(std::time::Duration::from_nanos(wait));
+                        continue;
+                    }
                     PacketGeneratorStatus::Stop => {
                         break;
                     }
