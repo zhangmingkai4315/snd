@@ -12,6 +12,7 @@ pub struct QueryProducer {
     max_counter: u64,
     counter: u64,
     stop_at: u64,
+    start_send: std::time::SystemTime,
     rate_limiter: Option<RateLimiter<NotKeyed, InMemoryState, DefaultClock>>,
     cache: Cache,
 }
@@ -52,6 +53,7 @@ impl QueryProducer {
             counter: 0,
             max_counter: max as u64,
             stop_at,
+            start_send: std::time::SystemTime::now(),
             rate_limiter: {
                 if argument.qps == 0 {
                     None
@@ -86,6 +88,9 @@ impl QueryProducer {
                     .as_secs()
                     >= self.stop_at)
         {
+            self.store.set_query_total(self.counter as usize);
+            self.store
+                .set_send_duration(self.start_send.elapsed().unwrap());
             return PacketGeneratorStatus::Stop;
         }
         let message = self.cache.build_message();

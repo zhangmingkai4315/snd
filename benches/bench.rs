@@ -6,6 +6,7 @@ use lib::utils::{Argument, Protocol};
 fn bench_producer(c: &mut Criterion) {
     let mut argument = Argument::default();
     argument.max = 10000000000;
+    argument.qps = 0;
     let mut producer = QueryProducer::new(argument);
     c.bench_function("producer", |b| {
         b.iter(|| {

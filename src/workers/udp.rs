@@ -37,9 +37,6 @@ impl Worker for UDPWorker {
             let mut producer = QueryProducer::new(arguments);
             let mut receive_counter: usize = 0;
             let mut send_counter: usize = 0;
-            let begin_send = std::time::SystemTime::now();
-            let mut end_send = std::time::SystemTime::now();
-
             loop {
                 let data = match producer.retrieve() {
                     PacketGeneratorStatus::Success(data) => data,
@@ -56,7 +53,7 @@ impl Worker for UDPWorker {
                     error!("send error : {}", e);
                 };
                 send_counter += 1;
-                end_send = std::time::SystemTime::now();
+
                 if check_all_message == true {
                     let mut buffer = vec![0; edns_size_local];
                     if let Ok(size) = socket.recv(&mut buffer) {
@@ -89,11 +86,7 @@ impl Worker for UDPWorker {
                     }
                 }
             }
-            producer.store.set_query_total(send_counter);
             producer.store.set_receive_total(receive_counter);
-            producer
-                .store
-                .set_send_duration(end_send.duration_since(begin_send).unwrap());
             status_sender.send(producer.store);
             info!("receive : {:?} ", receive_counter);
         })
