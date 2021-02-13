@@ -31,7 +31,7 @@ impl Histogram {
     /// # Examples
     ///
     /// ```
-    ///  use crate::histogram::Histogram;
+    ///  use lib::runner::histogram::Histogram;
     ///  let mut histogram = Histogram::new(20);
     ///  for i in 1..=100000 {
     ///       histogram.add(i as f64);
@@ -58,7 +58,7 @@ impl Histogram {
     /// # Examples
     ///
     /// ```
-    ///  use crate::histogram::Histogram;
+    ///  use lib::runner::histogram::Histogram;
     ///  let mut histogram = Histogram::new(20);
     ///  for i in 1..=100000 {
     ///       histogram.add(i as f64);
@@ -224,13 +224,13 @@ impl Histogram {
     /// # Examples
     ///
     /// ```
-    ///  use rand::distributions::{Normal, Distribution};
-    ///  use crate::histogram::Histogram;
-    ///  let normal = Normal::new(10.0, 10.0);
+    ///  use rand::distributions::{Standard,Distribution};
+    ///  use lib::runner::histogram::Histogram;
+    ///  use rand::prelude::*;
     ///  let mut histogram = Histogram::new(20);
     ///  for _i in 1..=100000 {
-    ///       let v = normal.sample(&mut rand::thread_rng());
-    ///       histogram.add(v as f64);
+    ///       let v:f64 = StdRng::from_entropy().sample(Standard);
+    ///       histogram.add(v);
     ///  }
     ///  println!("{}", histogram.to_string());
     /// ```
@@ -250,7 +250,7 @@ impl Histogram {
     /// return a report from current histogram
     /// # Example
     /// ```
-    /// use crate::histogram::Histogram;
+    /// use lib::runner::histogram::Histogram;
     /// let mut histogram = Histogram::new(10);
     /// for i in 1..=100 {
     ///     histogram.add(i as f64);
@@ -296,7 +296,6 @@ impl HistogramReport {
 mod tests {
     use super::Histogram;
     use super::HistogramReport;
-
     #[test]
     fn test_histogram() {
         let mut histogram = Histogram::new(10);

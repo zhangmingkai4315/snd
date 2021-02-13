@@ -1,3 +1,4 @@
+use crate::utils::{Argument, Protocol};
 use rand::Rng;
 use std::fs::File;
 use std::io::{self, BufRead};
@@ -7,7 +8,6 @@ use trust_dns_client::proto::{
     op::{Edns, Message, Query},
     {rr::Name, rr::RecordType},
 };
-use crate::utils::{Argument, Protocol};
 
 pub struct Cache {
     packet_id_number: u16,
@@ -15,11 +15,12 @@ pub struct Cache {
     cache: Vec<(Vec<u8>, u16)>,
     counter: usize,
     size: usize,
+    offset: usize,
 }
 
 #[warn(dead_code)]
 impl Cache {
-    pub(crate) fn new_from_file(args: &Argument) -> Vec<(Vec<u8>, u16)> {
+    pub fn new_from_file(args: &Argument) -> Vec<(Vec<u8>, u16)> {
         let file = args.file.to_owned();
         let mut query_data = vec![];
         if let Ok(lines) = read_lines(file) {
@@ -27,8 +28,6 @@ impl Cache {
             for line in lines {
                 if let Ok(query_type) = line {
                     let mut splitter = query_type.split_whitespace();
-                    // let mut domain = "";
-                    // let mut qtype = "";
                     let (domain, qtype) = match splitter.next() {
                         Some(d) => match splitter.next() {
                             Some(q) => (d, q),
@@ -41,7 +40,25 @@ impl Cache {
                     };
                     let qty = qtype.parse().unwrap();
                     match Cache::build_packet(domain.to_string(), qty, args) {
-                        Some(v) => query_data.push((v, u16::from(qty))),
+                        Some(mut v) => {
+                            let random_id = {
+                                if args.packet_id == 0 {
+                                    Cache::get_random_id()
+                                } else {
+                                    args.packet_id.to_be_bytes()
+                                }
+                            };
+                            let offset = {
+                                match args.protocol {
+                                    Protocol::TCP | Protocol::DOT => 2,
+                                    Protocol::UDP | Protocol::DOH => 0,
+                                }
+                            };
+
+                            v[offset] = random_id[0];
+                            v[offset + 1] = random_id[1];
+                            query_data.push((v, u16::from(qty)));
+                        }
                         _ => continue,
                     }
                 }
@@ -49,12 +66,28 @@ impl Cache {
         }
         query_data
     }
-    pub(crate) fn new_from_argument(args: &Argument) -> Vec<(Vec<u8>, u16)> {
+    pub fn new_from_argument(args: &Argument) -> Vec<(Vec<u8>, u16)> {
         let domain = args.domain.to_owned();
         let qty = args.qty.as_str();
         let mut query_data = vec![];
         let qty = RecordType::from_str(qty).expect("unknown type");
-        if let Some(v) = Cache::build_packet(domain, qty, args) {
+
+        let random_id = {
+            if args.packet_id == 0 {
+                Cache::get_random_id()
+            } else {
+                args.packet_id.to_be_bytes()
+            }
+        };
+        let offset = {
+            match args.protocol {
+                Protocol::TCP | Protocol::DOT => 2,
+                Protocol::UDP | Protocol::DOH => 0,
+            }
+        };
+        if let Some(mut v) = Cache::build_packet(domain, qty, args) {
+            v[offset] = random_id[0];
+            v[offset + 1] = random_id[1];
             query_data.push((v, u16::from(qty)));
         }
         query_data
@@ -66,7 +99,6 @@ impl Cache {
         args: &Argument,
     ) -> Option<Vec<u8>> {
         let ref mut message = Message::new();
-
         let mut query = Query::default();
         let name = match Name::from_str(domain.clone().as_str()) {
             Ok(name) => name,
@@ -99,10 +131,16 @@ impl Cache {
             None
         }
     }
-    pub(crate) fn new(argument: &Argument) -> Cache {
+    pub fn new(argument: &Argument) -> Cache {
         // let domain = argument.domain.clone();
         let protocol = argument.clone().protocol;
         let packet_id_number = argument.packet_id;
+        let offset = {
+            match argument.protocol {
+                Protocol::TCP | Protocol::DOT => 2,
+                Protocol::UDP | Protocol::DOH => 0,
+            }
+        };
         if argument.file.is_empty() {
             Cache {
                 packet_id_number,
@@ -110,6 +148,7 @@ impl Cache {
                 cache: Cache::new_from_argument(argument),
                 counter: 0,
                 size: 1,
+                offset,
             }
         } else {
             let cache = Cache::new_from_file(argument);
@@ -120,6 +159,7 @@ impl Cache {
                 cache,
                 counter: 0,
                 size,
+                offset,
             }
         }
     }
@@ -127,26 +167,15 @@ impl Cache {
         let mut rng = rand::thread_rng();
         [rng.gen::<u8>(), rng.gen::<u8>()]
     }
-    pub fn build_message(&mut self) -> (Vec<u8>, u16) {
-        let offset = {
-            match self.protocol {
-                Protocol::TCP | Protocol::DOT => 2,
-                Protocol::UDP | Protocol::DOH => 0,
-            }
-        };
-
-        let random_id = {
-            match self.packet_id_number {
-                0 => Cache::get_random_id(),
-                _ => self.packet_id_number.to_be_bytes(),
-            }
-        };
-
+    pub fn build_message(&mut self) -> (&[u8], u16) {
         self.counter += 1;
-        let mut data = self.cache[self.counter % self.size].clone();
-        data.0[offset] = random_id[0];
-        data.0[offset + 1] = random_id[1];
-        data
+        let ref mut data = self.cache[self.counter % self.size];
+        if self.packet_id_number == 0 {
+            let id = Cache::get_random_id();
+            data.0[self.offset] = id[0];
+            data.0[self.offset + 1] = id[1];
+        }
+        (data.0.as_slice().as_ref(), data.1)
     }
 }
 
@@ -162,8 +191,8 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::utils::Argument;
     use crate::runner::cache::Cache;
+    use crate::utils::Argument;
     use trust_dns_client::proto::op::Message;
     #[test]
     fn test_cache() {

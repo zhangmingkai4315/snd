@@ -1,11 +1,11 @@
+use crate::runner::cache::Cache;
+use crate::runner::report::QueryStatusStore;
+use crate::utils::Argument;
 use governor::clock::DefaultClock;
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::utils::Argument;
-use crate::runner::cache::Cache;
-use crate::runner::report::QueryStatusStore;
 
 pub struct QueryProducer {
     pub store: QueryStatusStore,
@@ -16,8 +16,8 @@ pub struct QueryProducer {
     cache: Cache,
 }
 
-pub enum PacketGeneratorStatus {
-    Success(Vec<u8>),
+pub enum PacketGeneratorStatus<'a> {
+    Success(&'a [u8]),
     Wait,
     Stop,
 }

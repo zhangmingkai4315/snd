@@ -20,6 +20,6 @@ extern crate toml;
 extern crate webpki;
 extern crate webpki_roots;
 
-pub mod workers;
 pub mod runner;
 pub mod utils;
+pub mod workers;

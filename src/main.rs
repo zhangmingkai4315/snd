@@ -6,9 +6,8 @@ use env_logger::{Builder, Target};
 use log::LevelFilter;
 use structopt::StructOpt;
 
-use lib::utils::Argument;
 use lib::runner::Runner;
-
+use lib::utils::Argument;
 
 fn main() {
     let mut arg: Argument = Argument::from_args();

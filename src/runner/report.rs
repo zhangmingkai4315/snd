@@ -1,18 +1,17 @@
 use chrono::DateTime;
 use chrono::Local;
-use std::collections::HashMap;
-use trust_dns_client::op::ResponseCode;
-use trust_dns_client::rr::RecordType;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::ops::Add;
+use trust_dns_client::op::ResponseCode;
 use trust_dns_client::op::{Header, Message};
+use trust_dns_client::rr::RecordType;
 // use crate::histogram::{HistogramReport};
 use crate::runner::histogram::HistogramReport;
 use crate::runner::runner::merge_map;
 use crate::utils::Argument;
-
 
 #[derive(Default, Clone)]
 pub struct QueryStatusStore {

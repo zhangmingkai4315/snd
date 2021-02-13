@@ -1,3 +1,7 @@
+use super::{MessageOrHeader, Worker, HEADER_SIZE};
+use crate::runner::report::QueryStatusStore;
+use crate::runner::{producer::PacketGeneratorStatus, QueryProducer};
+use crate::utils::Argument;
 use crossbeam_channel::{Receiver, Sender};
 use std::collections::HashMap;
 use std::net::UdpSocket;
@@ -6,10 +10,6 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
-use crate::utils::Argument;
-use crate::runner::report::QueryStatusStore;
-use crate::runner::{producer::PacketGeneratorStatus, QueryProducer};
-use super::{MessageOrHeader, Worker, HEADER_SIZE};
 
 pub struct UDPWorker {
     arguments: Argument,
@@ -48,7 +48,7 @@ impl Worker for UDPWorker {
                     }
                 };
                 let start = Instant::now();
-                if let Err(e) = socket.send(data.as_slice()) {
+                if let Err(e) = socket.send(data) {
                     error!("send error : {}", e);
                 };
                 send_counter += 1;
