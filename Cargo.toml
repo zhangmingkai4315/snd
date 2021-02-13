@@ -32,3 +32,20 @@ serde_json = "1.0"
 serde_yaml = "0.8"
 toml = "0.5"
 tokio = { version = "1", features = ["full"] }
+
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "bench"
+harness = false
+
+
+[[bin]]
+name = "snd"
+src = "src/main.rs"
+
+[lib]
+name = "snd_lib"
+path = "src/lib.rs"

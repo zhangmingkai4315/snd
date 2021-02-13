@@ -27,7 +27,7 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub(crate) fn new(arguments: Argument) -> Runner {
+    pub fn new(arguments: Argument) -> Runner {
         let mut workers: Vec<Box<dyn Worker>> = Vec::new();
         // let (sender, receiver) = channel();
         // let (sender, receiver) = bounded(arguments.client);

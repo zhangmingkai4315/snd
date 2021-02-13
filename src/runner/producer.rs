@@ -78,7 +78,7 @@ impl QueryProducer {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
-                    <= self.stop_at)
+                    >= self.stop_at)
         {
             return PacketGeneratorStatus::Stop;
         }
