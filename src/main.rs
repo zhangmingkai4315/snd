@@ -2,19 +2,13 @@ extern crate structopt;
 #[macro_use]
 extern crate log;
 
-use snd_lib::arguments;
-
-// extern crate stream_histogram;
-
-
-use snd_lib::runner;
-use snd_lib::workers;
-
-use arguments::Argument;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
-use runner::Runner;
 use structopt::StructOpt;
+
+use lib::utils::Argument;
+use lib::runner::Runner;
+
 
 fn main() {
     let mut arg: Argument = Argument::from_args();

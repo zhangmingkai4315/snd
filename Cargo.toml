@@ -35,7 +35,7 @@ tokio = { version = "1", features = ["full"] }
 
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = { version = "0.3.4", features = ["html_reports"]}
 
 [[bench]]
 name = "bench"
@@ -47,5 +47,5 @@ name = "snd"
 src = "src/main.rs"
 
 [lib]
-name = "snd_lib"
+name = "lib"
 path = "src/lib.rs"

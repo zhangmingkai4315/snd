@@ -1,11 +1,11 @@
-use crate::arguments::Argument;
-use crate::runner::cache::Cache;
-use crate::runner::report::QueryStatusStore;
 use governor::clock::DefaultClock;
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
 use std::time::{SystemTime, UNIX_EPOCH};
+use crate::utils::Argument;
+use crate::runner::cache::Cache;
+use crate::runner::report::QueryStatusStore;
 
 pub struct QueryProducer {
     pub store: QueryStatusStore,

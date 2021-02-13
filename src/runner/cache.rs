@@ -1,14 +1,13 @@
-use crate::arguments::{Argument, Protocol};
 use rand::Rng;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::str::FromStr;
-
 use trust_dns_client::proto::{
     op::{Edns, Message, Query},
     {rr::Name, rr::RecordType},
 };
+use crate::utils::{Argument, Protocol};
 
 pub struct Cache {
     packet_id_number: u16,
@@ -163,7 +162,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::arguments::Argument;
+    use crate::utils::Argument;
     use crate::runner::cache::Cache;
     use trust_dns_client::proto::op::Message;
     #[test]

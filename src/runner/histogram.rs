@@ -1,5 +1,3 @@
-extern crate rand;
-
 use linked_list::LinkedList;
 use std::ops::Add;
 

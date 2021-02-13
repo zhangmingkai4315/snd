@@ -1,4 +1,13 @@
-use crate::arguments::{Argument, Protocol};
+use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+use governor::{Quota, RateLimiter};
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::num::NonZeroU32;
+use std::ops::{Add, Deref};
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::utils::{Argument, Protocol};
 use crate::runner::cache::Cache;
 use crate::runner::histogram::Histogram;
 use crate::runner::report::{QueryStatusStore, RunnerReport};
@@ -8,14 +17,8 @@ use crate::workers::{
     MessageOrHeader,
     Worker,
 };
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-use governor::{Quota, RateLimiter};
-use std::collections::HashMap;
-use std::hash::Hash;
-use std::num::NonZeroU32;
-use std::ops::{Add, Deref};
-use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+
+
 
 pub struct Runner {
     arguments: Argument,

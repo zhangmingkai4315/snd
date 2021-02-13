@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use snd_lib::runner::QueryProducer;
-use snd_lib::arguments::Argument;
+use lib::runner::QueryProducer;
+use lib::utils::Argument;
 
 fn bench_producer(c: &mut Criterion) {
     let mut argument = Argument::default();
