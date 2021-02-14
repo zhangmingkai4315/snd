@@ -1,24 +1,18 @@
 use super::{MessageOrHeader, Worker, HEADER_SIZE};
-use crate::runner::report::QueryStatusStore;
+use crate::runner::consumer::ResponseConsumer;
+use crate::runner::report::StatusStore;
 use crate::runner::{producer::PacketGeneratorStatus, QueryProducer};
 use crate::utils::Argument;
-use chrono::Duration;
-use crossbeam_channel::{Receiver, Sender};
-use std::collections::HashMap;
+
+use crossbeam_channel::Sender;
 use std::net::UdpSocket;
-use std::sync::{Arc, Mutex};
 use std::thread::{sleep, JoinHandle};
-use std::time::Instant;
 use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
-// send_counter: AtomicU64,
-// static mut RECEIVE_COUNTER: AtomicU64 = AtomicU64::new(0);
-// static mut SEND_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub struct UDPWorker {
     arguments: Argument,
-    result_sender: Sender<MessageOrHeader>,
-    pub status_sender: Sender<QueryStatusStore>,
+    pub status_sender: Sender<(StatusStore, StatusStore)>,
 }
 
 impl Worker for UDPWorker {
@@ -33,15 +27,15 @@ impl Worker for UDPWorker {
         socket
             .connect(server_port.clone())
             .expect("unable to connect to server");
-        let status_sender = self.status_sender.clone();
-        let result_sender = self.result_sender.clone();
+        let status_sender_channel = self.status_sender.clone();
 
         std::thread::spawn(move || {
             let mut producer = QueryProducer::new(arguments);
-            let mut receive_counter: usize = 0;
-            let mut send_counter: usize = 0;
-            let mut start = std::time::SystemTime::now();
+            let mut consumer = ResponseConsumer::new();
+            #[allow(unused_assignments)]
             let mut stop_sender_timer = std::time::SystemTime::now();
+            let mut receive_counter: usize = 0;
+            let mut start = std::time::SystemTime::now();
             loop {
                 match producer.retrieve() {
                     PacketGeneratorStatus::Success(data, qtype) => {
@@ -50,7 +44,6 @@ impl Worker for UDPWorker {
                             error!("send error : {}", e);
                         }
                         producer.store.update_query(qtype);
-                        send_counter += 1;
                     }
                     PacketGeneratorStatus::Wait(wait) => {
                         sleep(std::time::Duration::from_nanos(wait));
@@ -65,12 +58,10 @@ impl Worker for UDPWorker {
                     let mut buffer = vec![0; edns_size_local];
                     if let Ok(size) = socket.recv(&mut buffer) {
                         if let Ok(message) = Message::from_bytes(&buffer[..size]) {
-                            if let Err(e) = result_sender.send(MessageOrHeader::Message((
+                            consumer.receive(&MessageOrHeader::Message((
                                 message,
                                 start.elapsed().unwrap().as_secs_f64(),
-                            ))) {
-                                error!("send packet: {:?}", e);
-                            }
+                            )));
                         } else {
                             error!("parse dns message error");
                         }
@@ -80,12 +71,10 @@ impl Worker for UDPWorker {
                     let mut buffer = vec![0; HEADER_SIZE];
                     if let Ok(size) = socket.recv(&mut buffer) {
                         if let Ok(message) = Header::from_bytes(&buffer[..size]) {
-                            if let Err(e) = result_sender.send(MessageOrHeader::Header((
+                            consumer.receive(&MessageOrHeader::Header((
                                 message,
                                 start.elapsed().unwrap().as_secs_f64(),
-                            ))) {
-                                error!("send packet: {:?}", e);
-                            }
+                            )));
                         } else {
                             error!("parse dns message error");
                         }
@@ -93,10 +82,18 @@ impl Worker for UDPWorker {
                     }
                 }
             }
-
-            producer.store.set_receive_total(receive_counter);
-            debug!("{:?}", producer.store);
-            status_sender.send(producer.store);
+            producer
+                .store
+                .set_send_duration(stop_sender_timer.duration_since(start).unwrap());
+            consumer.store.set_receive_total(receive_counter);
+            consumer.receive(&MessageOrHeader::End);
+            debug!(
+                "producer = {:?} \n consumer = {:?}",
+                producer.store, consumer.store
+            );
+            if let Err(e) = status_sender_channel.send((producer.store, consumer.store)) {
+                panic!("send status fail: {:?}", e)
+            }
         })
     }
 }
@@ -104,12 +101,10 @@ impl Worker for UDPWorker {
 impl UDPWorker {
     pub fn new(
         arguments: Argument,
-        result_sender: Sender<MessageOrHeader>,
-        status_sender: Sender<QueryStatusStore>,
+        status_sender: Sender<(StatusStore, StatusStore)>,
     ) -> UDPWorker {
         UDPWorker {
             arguments: arguments.clone(),
-            result_sender,
             status_sender,
         }
     }

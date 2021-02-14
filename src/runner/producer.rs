@@ -1,15 +1,14 @@
 use crate::runner::cache::Cache;
-use crate::runner::report::QueryStatusStore;
+use crate::runner::report::StatusStore;
 use crate::utils::Argument;
-use governor::clock::{Clock, DefaultClock, QuantaClock, QuantaInstant, Reference};
+use governor::clock::{Clock, DefaultClock, QuantaClock, Reference};
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
-use std::ops::Add;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct QueryProducer {
-    pub store: QueryStatusStore,
+    pub store: StatusStore,
     max_counter: u64,
     counter: u64,
     stop_at: u64,
@@ -35,14 +34,14 @@ impl QueryProducer {
                 + argument.until_stop as u64;
         };
 
-        let mut limiter = {
+        let limiter = {
             if argument.client >= 1 {
                 argument.qps / argument.client
             } else {
                 1
             }
         } as u32;
-        let mut max = {
+        let max = {
             if argument.client >= 1 {
                 argument.max / argument.client
             } else {
@@ -50,7 +49,7 @@ impl QueryProducer {
             }
         } as u32;
         QueryProducer {
-            store: QueryStatusStore::new(),
+            store: StatusStore::new(),
             counter: 0,
             max_counter: max as u64,
             stop_at,

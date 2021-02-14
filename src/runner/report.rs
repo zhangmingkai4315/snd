@@ -14,7 +14,7 @@ use crate::runner::runner::merge_map;
 use crate::utils::Argument;
 
 #[derive(Default, Clone, Debug)]
-pub struct QueryStatusStore {
+pub struct StatusStore {
     query_total: usize,
     receive_total: usize,
     send_duration: Option<std::time::Duration>,
@@ -27,10 +27,10 @@ pub struct QueryStatusStore {
     report: Option<HistogramReport>,
 }
 
-impl Add<QueryStatusStore> for QueryStatusStore {
-    type Output = QueryStatusStore;
+impl Add<StatusStore> for StatusStore {
+    type Output = StatusStore;
 
-    fn add(self, rhs: QueryStatusStore) -> Self::Output {
+    fn add(self, rhs: StatusStore) -> Self::Output {
         Self {
             query_total: self.query_total + rhs.query_total,
             receive_total: self.receive_total + rhs.receive_total,
@@ -67,14 +67,21 @@ impl Add<QueryStatusStore> for QueryStatusStore {
             authority_type: merge_map(&self.authority_type, &rhs.authority_type),
             additional_type: merge_map(&self.additional_type, &rhs.additional_type),
             reply_code: merge_map(&self.reply_code, &rhs.reply_code),
-            report: None,
+            report: {
+                match (&self.report, &rhs.report) {
+                    (Some(v1), Some(v2)) => Some(v1.clone() + v2.clone()),
+                    (None, Some(v2)) => Some(v2.clone()),
+                    (Some(v1), None) => Some(v1.clone()),
+                    _ => None,
+                }
+            },
         }
     }
 }
 
-impl QueryStatusStore {
-    pub fn new() -> QueryStatusStore {
-        QueryStatusStore {
+impl StatusStore {
+    pub fn new() -> StatusStore {
+        StatusStore {
             query_total: 0,
             receive_total: 0,
             send_duration: None,
@@ -87,12 +94,12 @@ impl QueryStatusStore {
             report: None,
         }
     }
-    pub fn new_from_query_status(query_status: HashMap<u16, usize>) -> QueryStatusStore {
+    pub fn new_from_query_status(query_status: HashMap<u16, usize>) -> StatusStore {
         let mut query_total = 0;
         for (_, v) in query_status.clone() {
             query_total += v;
         }
-        QueryStatusStore {
+        StatusStore {
             query_total: query_total,
             receive_total: 0,
             send_duration: None,
@@ -129,18 +136,12 @@ impl QueryStatusStore {
         self.report = report;
     }
     pub fn update_response_from_header(&mut self, header: &Header) {
-        // self.total = self.total + 1;
-        // only for message type
-
-        // header type only calculate the counter of response code.
-        // self.query_total = self.query_total + 1;
         let r_code = header.response_code();
         let count = self.reply_code.entry(r_code).or_insert(0);
         *count += 1;
         self.last_update = Some(std::time::SystemTime::now());
     }
     pub fn update_response_from_message(&mut self, message: &Message) {
-        // self.query_total = self.query_total + 1;
         let query_type = u16::from(message.queries()[0].query_type());
         let count = self.query_type.entry(query_type).or_insert(0);
         *count += 1;
@@ -172,8 +173,8 @@ impl QueryStatusStore {
 
 pub struct RunnerReport {
     start: std::time::SystemTime,
-    producer_report: Option<QueryStatusStore>,
-    consumer_report: Option<QueryStatusStore>,
+    producer_report: Option<StatusStore>,
+    consumer_report: Option<StatusStore>,
     histogram: Option<HistogramReport>,
 }
 
@@ -186,13 +187,13 @@ impl RunnerReport {
             histogram: None,
         }
     }
-    pub fn set_producer_report(&mut self, store: QueryStatusStore) {
+    pub fn set_producer_report(&mut self, store: StatusStore) {
         self.producer_report = Some(store);
     }
-    pub fn set_consumer_report(&mut self, store: QueryStatusStore) {
+    pub fn set_consumer_report(&mut self, store: StatusStore) {
         self.consumer_report = Some(store);
     }
-    pub fn set_histogram_report(&mut self, store: QueryStatusStore) {
+    pub fn set_histogram_report(&mut self, store: StatusStore) {
         self.histogram = store.report;
     }
 
@@ -309,8 +310,8 @@ impl BasicStats {
         let duration_second = (end_time - start_time).num_milliseconds() as f64 / 1000 as f64;
         let qps = report.producer_report.as_ref().unwrap().query_total as f64 / duration_second;
         let query_total = report.producer_report.as_ref().unwrap().query_total;
-        let response_total = report.producer_report.as_ref().unwrap().receive_total;
-        let query_rate = report.producer_report.as_ref().unwrap().receive_total as f64 * 100.0
+        let response_total = report.consumer_report.as_ref().unwrap().receive_total;
+        let query_rate = report.consumer_report.as_ref().unwrap().receive_total as f64 * 100.0
             / report.producer_report.as_ref().unwrap().query_total as f64;
 
         if report.histogram.is_none() {

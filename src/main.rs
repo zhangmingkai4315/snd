@@ -1,6 +1,5 @@
-extern crate structopt;
-#[macro_use]
 extern crate log;
+extern crate structopt;
 
 use env_logger::{Builder, Target};
 use log::LevelFilter;

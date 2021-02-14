@@ -1,30 +1,21 @@
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-use governor::{Quota, RateLimiter};
+use crossbeam_channel::{bounded, Receiver};
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::num::NonZeroU32;
-use std::ops::{Add, Deref};
-use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
 
-use crate::runner::cache::Cache;
-use crate::runner::histogram::Histogram;
-use crate::runner::report::{QueryStatusStore, RunnerReport};
-use crate::utils::{Argument, Protocol};
+use crate::runner::report::{RunnerReport, StatusStore};
+use crate::utils::Argument;
 use crate::workers::{
     // doh::DOHWorker, tcp::TCPWorker,  udp_async::UDPAsyncWorker,dot::DoTWorker,
     udp::UDPWorker,
-    MessageOrHeader,
     Worker,
 };
 
 pub struct Runner {
     arguments: Argument,
     workers: Vec<Box<dyn Worker>>,
-    consumer: QueryConsumer,
     report: RunnerReport,
-    result_sender: Sender<MessageOrHeader>,
-    query_status_receiver: Receiver<QueryStatusStore>,
+    query_status_receiver: Receiver<(StatusStore, StatusStore)>,
 }
 
 impl Runner {
@@ -35,7 +26,6 @@ impl Runner {
         // let receiver = Arc::new(Mutex::new(receiver));
         let origin_arguments = Arc::new(arguments.clone());
         let (status_sender, status_receiver) = bounded(arguments.client);
-        let (result_sender, result_receiver) = bounded(arguments.client);
         if origin_arguments.enable_async {
             // workers.push(Box::new(UDPAsyncWorker::new(
             //     arguments.clone(),
@@ -44,13 +34,11 @@ impl Runner {
             // )));
         } else {
             for _i in 0..origin_arguments.client {
-                let result_sender = result_sender.clone();
                 let query_status_sender = status_sender.clone();
                 match arguments.protocol {
                     _ => {
                         workers.push(Box::new(UDPWorker::new(
                             arguments.clone(),
-                            result_sender,
                             query_status_sender,
                         )));
                     }
@@ -76,14 +64,10 @@ impl Runner {
                 }
             }
         }
-
-        let consumer = QueryConsumer::new(result_receiver);
         Runner {
             arguments,
             workers,
-            consumer,
-            result_sender: result_sender.clone(),
-            query_status_receiver: status_receiver,
+            query_status_receiver: status_receiver.clone(),
             report: RunnerReport::new(),
         }
     }
@@ -94,75 +78,26 @@ impl Runner {
             workers_threads.push(worker.run());
         }
         for work in workers_threads {
-            work.join();
+            if let Err(e) = work.join() {
+                panic!("join thread fail: {:?}", e)
+            }
         }
         // merge query store
 
-        let mut query_store_total = QueryStatusStore::new();
-        for i in 1..=self.workers.len() {
-            if let Ok(mut query_store) = self.query_status_receiver.recv() {
-                query_store_total = query_store_total + query_store;
+        let mut query_store_total = StatusStore::new();
+        let mut response_store_total = StatusStore::new();
+        for _ in 1..=self.workers.len() {
+            if let Ok(store) = self.query_status_receiver.recv() {
+                query_store_total = query_store_total + store.0;
+                response_store_total = response_store_total + store.1;
             }
         }
-        // send a end signal
-        self.result_sender
-            .send(MessageOrHeader::End)
-            .expect("send end signal error");
         // how to
         self.report.set_producer_report(query_store_total);
         self.report
-            .set_consumer_report((*self.consumer.store.lock().unwrap()).clone());
-        self.consumer
-            .close_receiver
-            .recv()
-            .expect("receive close channel fail");
-        self.report
-            .set_histogram_report((*self.consumer.store.lock().unwrap()).clone());
+            .set_consumer_report(response_store_total.clone());
+        self.report.set_histogram_report(response_store_total);
         self.report.report(self.arguments.clone());
-    }
-}
-
-pub struct QueryConsumer {
-    close_receiver: Receiver<bool>,
-    store: Arc<Mutex<QueryStatusStore>>,
-}
-
-impl QueryConsumer {
-    pub fn new(receiver: Receiver<MessageOrHeader>) -> QueryConsumer {
-        let thread_receiver = receiver.clone();
-        let store = Arc::new(Mutex::new(QueryStatusStore::default()));
-        let thread_store = store.clone();
-        let (close_sender, close_receiver) = unbounded();
-        std::thread::spawn(move || {
-            let ref mut histogram = Histogram::new(50);
-            match thread_store.lock() {
-                Ok(mut v) => {
-                    for _message in thread_receiver {
-                        match &_message {
-                            MessageOrHeader::Message((m, elapse)) => {
-                                v.update_response_from_message(&m);
-                                histogram.add(*elapse);
-                            }
-                            MessageOrHeader::Header((h, elapse)) => {
-                                v.update_response_from_header(&h);
-                                histogram.add(*elapse);
-                            }
-                            MessageOrHeader::End => {
-                                v.update_histogram_report(histogram.report());
-                                close_sender.send(true).expect("send to close channel fail");
-                                break;
-                            }
-                        }
-                    }
-                }
-                _ => error!("lock store thread fail"),
-            }
-        });
-
-        QueryConsumer {
-            store,
-            close_receiver: close_receiver.clone(),
-        }
     }
 }
 

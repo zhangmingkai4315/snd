@@ -11,7 +11,6 @@ use trust_dns_client::proto::{
 
 pub struct Cache {
     packet_id_number: u16,
-    protocol: Protocol,
     cache: Vec<(Vec<u8>, u16)>,
     counter: usize,
     size: usize,
@@ -133,7 +132,6 @@ impl Cache {
     }
     pub fn new(argument: &Argument) -> Cache {
         // let domain = argument.domain.clone();
-        let protocol = argument.clone().protocol;
         let packet_id_number = argument.packet_id;
         let offset = {
             match argument.protocol {
@@ -144,7 +142,6 @@ impl Cache {
         if argument.file.is_empty() {
             Cache {
                 packet_id_number,
-                protocol,
                 cache: Cache::new_from_argument(argument),
                 counter: 0,
                 size: 1,
@@ -155,7 +152,6 @@ impl Cache {
             let size = cache.len();
             Cache {
                 packet_id_number,
-                protocol,
                 cache,
                 counter: 0,
                 size,

@@ -276,6 +276,35 @@ pub struct HistogramReport {
     pub percent50: f64,
 }
 
+impl Add<HistogramReport> for HistogramReport {
+    type Output = HistogramReport;
+
+    fn add(self, rhs: HistogramReport) -> Self::Output {
+        HistogramReport {
+            total: self.total + rhs.total,
+            mean: (self.mean + rhs.mean) / 2.0,
+            max: {
+                if self.max > rhs.max {
+                    self.max
+                } else {
+                    rhs.max
+                }
+            },
+            min: {
+                if self.min < rhs.min {
+                    self.min
+                } else {
+                    rhs.min
+                }
+            },
+            percent99: (self.percent99 + rhs.percent99) / 2.0,
+            percent95: (self.percent95 + rhs.percent95) / 2.0,
+            percent90: (self.percent90 + rhs.percent90) / 2.0,
+            percent50: (self.percent50 + rhs.percent50) / 2.0,
+        }
+    }
+}
+
 #[allow(dead_code)]
 impl HistogramReport {
     pub fn new(histogram: &Histogram) -> Option<Self> {
