@@ -109,11 +109,9 @@ impl Runner {
             .send(MessageOrHeader::End)
             .expect("send end signal error");
         // how to
-
         self.report.set_producer_report(query_store_total);
         self.report
             .set_consumer_report((*self.consumer.store.lock().unwrap()).clone());
-        // block until receive close channel
         self.consumer
             .close_receiver
             .recv()
@@ -137,24 +135,27 @@ impl QueryConsumer {
         let (close_sender, close_receiver) = unbounded();
         std::thread::spawn(move || {
             let ref mut histogram = Histogram::new(50);
-            for _message in thread_receiver {
-                match thread_store.lock() {
-                    Ok(mut v) => match &_message {
-                        MessageOrHeader::Message((m, elapse)) => {
-                            v.update_response_from_message(&m);
-                            histogram.add(*elapse);
+            match thread_store.lock() {
+                Ok(mut v) => {
+                    for _message in thread_receiver {
+                        match &_message {
+                            MessageOrHeader::Message((m, elapse)) => {
+                                v.update_response_from_message(&m);
+                                histogram.add(*elapse);
+                            }
+                            MessageOrHeader::Header((h, elapse)) => {
+                                v.update_response_from_header(&h);
+                                histogram.add(*elapse);
+                            }
+                            MessageOrHeader::End => {
+                                v.update_histogram_report(histogram.report());
+                                close_sender.send(true).expect("send to close channel fail");
+                                break;
+                            }
                         }
-                        MessageOrHeader::Header((h, elapse)) => {
-                            v.update_response_from_header(&h);
-                            histogram.add(*elapse);
-                        }
-                        MessageOrHeader::End => {
-                            v.update_histogram_report(histogram.report());
-                            close_sender.send(true).expect("send to close channel fail");
-                        }
-                    },
-                    _ => error!("lock store thread fail"),
+                    }
                 }
+                _ => error!("lock store thread fail"),
             }
         });
 

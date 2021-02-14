@@ -13,7 +13,7 @@ use crate::runner::histogram::HistogramReport;
 use crate::runner::runner::merge_map;
 use crate::utils::Argument;
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct QueryStatusStore {
     query_total: usize,
     receive_total: usize,
@@ -109,12 +109,13 @@ impl QueryStatusStore {
         self.query_total = total;
     }
     pub fn set_receive_total(&mut self, total: usize) {
-        self.query_total = total;
+        self.receive_total = total;
     }
     pub fn set_send_duration(&mut self, duration: std::time::Duration) {
         self.send_duration = Some(duration);
     }
     #[allow(dead_code)]
+    // update from producer
     pub fn update_query(&mut self, query_type: u16) {
         self.query_total = self.query_total + 1;
         let count = self.query_type.entry(query_type).or_insert(0);
@@ -132,14 +133,14 @@ impl QueryStatusStore {
         // only for message type
 
         // header type only calculate the counter of response code.
-        self.query_total = self.query_total + 1;
+        // self.query_total = self.query_total + 1;
         let r_code = header.response_code();
         let count = self.reply_code.entry(r_code).or_insert(0);
         *count += 1;
         self.last_update = Some(std::time::SystemTime::now());
     }
     pub fn update_response_from_message(&mut self, message: &Message) {
-        self.query_total = self.query_total + 1;
+        // self.query_total = self.query_total + 1;
         let query_type = u16::from(message.queries()[0].query_type());
         let count = self.query_type.entry(query_type).or_insert(0);
         *count += 1;
@@ -306,10 +307,10 @@ impl BasicStats {
             .expect("thread exit abnormal")
             .into();
         let duration_second = (end_time - start_time).num_milliseconds() as f64 / 1000 as f64;
-        let qps = report.consumer_report.as_ref().unwrap().query_total as f64 / duration_second;
+        let qps = report.producer_report.as_ref().unwrap().query_total as f64 / duration_second;
         let query_total = report.producer_report.as_ref().unwrap().query_total;
-        let response_total = report.producer_report.as_ref().unwrap().query_total;
-        let query_rate = report.consumer_report.as_ref().unwrap().query_total as f64 * 100.0
+        let response_total = report.producer_report.as_ref().unwrap().receive_total;
+        let query_rate = report.producer_report.as_ref().unwrap().receive_total as f64 * 100.0
             / report.producer_report.as_ref().unwrap().query_total as f64;
 
         if report.histogram.is_none() {
@@ -577,21 +578,6 @@ impl ReportType {
         }
         println!("{}", out_put);
     }
-    // fn toml(report: &RunnerReport,  arguments: Argument){
-    //     let formatted = ReportType::formatted_data(report);
-    //     let file = arguments.output;
-    //     match toml::to_string_pretty( &formatted){
-    //         Err(err) => {
-    //             error!("toml convert fail: {}", err.to_string())
-    //         },
-    //         Ok(v) => {
-    //             let mut buffer = File::create(file).expect("create file error");
-    //             if let Err(e) = buffer.write_all(v.as_bytes()){
-    //                 error!("{}", e.to_string())
-    //             }
-    //         }
-    //     }
-    // }
     fn yaml(report: &RunnerReport, arguments: Argument) {
         let formatted = ReportType::formatted_data(report);
         let file = arguments.output;
@@ -624,7 +610,6 @@ impl ReportOutput for ReportType {
     fn format(&self, report: &RunnerReport, arguments: Argument) {
         match self {
             ReportType::Basic => ReportType::basic(report, arguments),
-            // ReportType::TOML => ReportType::toml(report, arguments),
             ReportType::YAML => ReportType::yaml(report, arguments),
             ReportType::JSON => ReportType::json(report, arguments),
         }

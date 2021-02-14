@@ -5,6 +5,7 @@ use governor::clock::{Clock, DefaultClock, QuantaClock, QuantaInstant, Reference
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
+use std::ops::Add;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct QueryProducer {
@@ -18,7 +19,7 @@ pub struct QueryProducer {
 }
 
 pub enum PacketGeneratorStatus<'a> {
-    Success(&'a [u8]),
+    Success(&'a [u8], u16),
     Wait(u64),
     Stop,
 }
@@ -95,7 +96,7 @@ impl QueryProducer {
         }
         let message = self.cache.build_message();
         self.counter = self.counter + 1;
-        self.store.update_query(message.1);
-        PacketGeneratorStatus::Success(message.0)
+
+        PacketGeneratorStatus::Success(message.0, message.1)
     }
 }

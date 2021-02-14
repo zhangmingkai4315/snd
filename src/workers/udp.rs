@@ -12,6 +12,9 @@ use std::time::Instant;
 use trust_dns_client::op::{Header, Message};
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
+// send_counter: AtomicU64,
+// static mut RECEIVE_COUNTER: AtomicU64 = AtomicU64::new(0);
+// static mut SEND_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub struct UDPWorker {
     arguments: Argument,
     result_sender: Sender<MessageOrHeader>,
@@ -32,38 +35,42 @@ impl Worker for UDPWorker {
             .expect("unable to connect to server");
         let status_sender = self.status_sender.clone();
         let result_sender = self.result_sender.clone();
-        debug!("create a udp worker");
+
         std::thread::spawn(move || {
             let mut producer = QueryProducer::new(arguments);
             let mut receive_counter: usize = 0;
             let mut send_counter: usize = 0;
+            let mut start = std::time::SystemTime::now();
+            let mut stop_sender_timer = std::time::SystemTime::now();
             loop {
-                let data = match producer.retrieve() {
-                    PacketGeneratorStatus::Success(data) => data,
+                match producer.retrieve() {
+                    PacketGeneratorStatus::Success(data, qtype) => {
+                        start = std::time::SystemTime::now();
+                        if let Err(e) = socket.send(data) {
+                            error!("send error : {}", e);
+                        }
+                        producer.store.update_query(qtype);
+                        send_counter += 1;
+                    }
                     PacketGeneratorStatus::Wait(wait) => {
                         sleep(std::time::Duration::from_nanos(wait));
                         continue;
                     }
                     PacketGeneratorStatus::Stop => {
+                        stop_sender_timer = std::time::SystemTime::now();
                         break;
                     }
                 };
-                let start = Instant::now();
-                if let Err(e) = socket.send(data) {
-                    error!("send error : {}", e);
-                };
-                send_counter += 1;
-
                 if check_all_message == true {
                     let mut buffer = vec![0; edns_size_local];
                     if let Ok(size) = socket.recv(&mut buffer) {
                         if let Ok(message) = Message::from_bytes(&buffer[..size]) {
                             if let Err(e) = result_sender.send(MessageOrHeader::Message((
                                 message,
-                                start.elapsed().as_secs_f64(),
+                                start.elapsed().unwrap().as_secs_f64(),
                             ))) {
                                 error!("send packet: {:?}", e);
-                            };
+                            }
                         } else {
                             error!("parse dns message error");
                         }
@@ -75,10 +82,10 @@ impl Worker for UDPWorker {
                         if let Ok(message) = Header::from_bytes(&buffer[..size]) {
                             if let Err(e) = result_sender.send(MessageOrHeader::Header((
                                 message,
-                                start.elapsed().as_secs_f64(),
+                                start.elapsed().unwrap().as_secs_f64(),
                             ))) {
                                 error!("send packet: {:?}", e);
-                            };
+                            }
                         } else {
                             error!("parse dns message error");
                         }
@@ -86,9 +93,10 @@ impl Worker for UDPWorker {
                     }
                 }
             }
+
             producer.store.set_receive_total(receive_counter);
+            debug!("{:?}", producer.store);
             status_sender.send(producer.store);
-            info!("receive : {:?} ", receive_counter);
         })
     }
 }
