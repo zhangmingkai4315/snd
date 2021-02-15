@@ -1,12 +1,10 @@
 extern crate log;
 extern crate structopt;
-
 use env_logger::{Builder, Target};
-use log::LevelFilter;
-use structopt::StructOpt;
-
 use lib::runner::Runner;
 use lib::utils::Argument;
+use log::LevelFilter;
+use structopt::StructOpt;
 
 fn main() {
     let mut arg: Argument = Argument::from_args();

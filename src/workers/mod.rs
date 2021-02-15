@@ -1,7 +1,8 @@
+use crate::runner::report::StatusStore;
 use trust_dns_client::op::{Header, Message};
 
 pub trait Worker {
-    fn run(&mut self) -> std::thread::JoinHandle<()>;
+    fn run(&mut self) -> (StatusStore, StatusStore);
 }
 
 const HEADER_SIZE: usize = 12;

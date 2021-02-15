@@ -34,24 +34,10 @@ impl QueryProducer {
                 + argument.until_stop as u64;
         };
 
-        let limiter = {
-            if argument.client >= 1 {
-                argument.qps / argument.client
-            } else {
-                1
-            }
-        } as u32;
-        let max = {
-            if argument.client >= 1 {
-                argument.max / argument.client
-            } else {
-                1
-            }
-        } as u32;
         QueryProducer {
             store: StatusStore::new(),
             counter: 0,
-            max_counter: max as u64,
+            max_counter: argument.max as u64,
             stop_at,
             start_send: std::time::SystemTime::now(),
             rate_limiter: {
@@ -59,8 +45,10 @@ impl QueryProducer {
                     None
                 } else {
                     Some(RateLimiter::direct(
-                        Quota::per_second(NonZeroU32::new(limiter).expect("qps setting error"))
-                            .allow_burst(NonZeroU32::new(1).unwrap()),
+                        Quota::per_second(
+                            NonZeroU32::new(argument.qps as u32).expect("qps setting error"),
+                        )
+                        .allow_burst(NonZeroU32::new(1).unwrap()),
                     ))
                 }
             },
@@ -88,7 +76,7 @@ impl QueryProducer {
                     .as_secs()
                     >= self.stop_at)
         {
-            self.store.set_query_total(self.counter as usize);
+            self.store.set_query_total(self.counter);
             self.store
                 .set_send_duration(self.start_send.elapsed().unwrap());
             return PacketGeneratorStatus::Stop;

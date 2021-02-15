@@ -15,15 +15,15 @@ use crate::utils::Argument;
 
 #[derive(Default, Clone, Debug)]
 pub struct StatusStore {
-    query_total: usize,
-    receive_total: usize,
+    query_total: u64,
+    receive_total: u64,
     send_duration: Option<std::time::Duration>,
     last_update: Option<std::time::SystemTime>,
-    query_type: HashMap<u16, usize>,
-    answer_type: HashMap<u16, usize>,
-    authority_type: HashMap<u16, usize>,
-    additional_type: HashMap<u16, usize>,
-    reply_code: HashMap<u8, usize>,
+    query_type: HashMap<u16, u64>,
+    answer_type: HashMap<u16, u64>,
+    authority_type: HashMap<u16, u64>,
+    additional_type: HashMap<u16, u64>,
+    reply_code: HashMap<u8, u64>,
     report: Option<HistogramReport>,
 }
 
@@ -94,8 +94,8 @@ impl StatusStore {
             report: None,
         }
     }
-    pub fn new_from_query_status(query_status: HashMap<u16, usize>) -> StatusStore {
-        let mut query_total = 0;
+    pub fn new_from_query_status(query_status: HashMap<u16, u64>) -> StatusStore {
+        let mut query_total: u64 = 0;
         for (_, v) in query_status.clone() {
             query_total += v;
         }
@@ -112,10 +112,10 @@ impl StatusStore {
             report: None,
         }
     }
-    pub fn set_query_total(&mut self, total: usize) {
+    pub fn set_query_total(&mut self, total: u64) {
         self.query_total = total;
     }
-    pub fn set_receive_total(&mut self, total: usize) {
+    pub fn set_receive_total(&mut self, total: u64) {
         self.receive_total = total;
     }
     pub fn set_send_duration(&mut self, duration: std::time::Duration) {
@@ -128,7 +128,7 @@ impl StatusStore {
         let count = self.query_type.entry(query_type).or_insert(0);
         *count += 1;
     }
-    pub fn get_query(&mut self) -> HashMap<u16, usize> {
+    pub fn get_query(&mut self) -> HashMap<u16, u64> {
         self.query_type.clone()
     }
 
@@ -222,11 +222,11 @@ pub enum ReportType {
 }
 
 struct BasicStats {
-    response_code: Vec<(ResponseCode, usize)>,
+    response_code: Vec<(ResponseCode, u64)>,
     start_time: DateTime<Local>,
     end_time: DateTime<Local>,
-    query_total: usize,
-    response_total: usize,
+    query_total: u64,
+    response_total: u64,
     qps: f64,
     query_rate: f64,
     min_lantency: f64,
@@ -244,8 +244,8 @@ struct BasicStatsSerializable {
     time_cost: String,
     start_time: String,
     end_time: String,
-    query_total: usize,
-    response_total: usize,
+    query_total: u64,
+    response_total: u64,
     qps: f64,
     query_rate: f64,
     min_lantency: f64,
@@ -259,12 +259,12 @@ struct BasicStatsSerializable {
 #[derive(Serialize, Deserialize, Debug)]
 struct ItemKeyValue {
     key: String,
-    value: usize,
+    value: u64,
 }
 #[derive(Serialize, Deserialize, Debug)]
 struct ItemKeyValueRate {
     key: String,
-    value: usize,
+    value: u64,
     rate: f64,
 }
 
@@ -354,11 +354,11 @@ impl BasicStats {
 }
 
 struct ExtensionStats {
-    query_type: Vec<(RecordType, usize)>,
-    response_type: Vec<(RecordType, usize, f64)>,
-    answer_result: Vec<(RecordType, usize)>,
-    additional_result: Vec<(RecordType, usize)>,
-    authority_result: Vec<(RecordType, usize)>,
+    query_type: Vec<(RecordType, u64)>,
+    response_type: Vec<(RecordType, u64, f64)>,
+    answer_result: Vec<(RecordType, u64)>,
+    additional_result: Vec<(RecordType, u64)>,
+    authority_result: Vec<(RecordType, u64)>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -617,7 +617,7 @@ impl ReportOutput for ReportType {
     }
 }
 
-fn format_result(result_map: &HashMap<u16, usize>) -> Vec<(RecordType, usize)> {
+fn format_result(result_map: &HashMap<u16, u64>) -> Vec<(RecordType, u64)> {
     let mut to_tuple: Vec<_> = result_map.iter().collect();
     to_tuple.sort_by_key(|a| a.0);
     to_tuple
@@ -626,10 +626,10 @@ fn format_result(result_map: &HashMap<u16, usize>) -> Vec<(RecordType, usize)> {
             let query_type = RecordType::from(*a.0);
             (query_type, *a.1)
         })
-        .collect::<Vec<(RecordType, usize)>>()
+        .collect::<Vec<(RecordType, u64)>>()
 }
 
-fn format_code_result(result_map: &HashMap<u8, usize>) -> Vec<(ResponseCode, usize)> {
+fn format_code_result(result_map: &HashMap<u8, u64>) -> Vec<(ResponseCode, u64)> {
     let mut to_tuple: Vec<_> = result_map.iter().collect();
     to_tuple.sort_by_key(|a| a.0);
     to_tuple
@@ -638,5 +638,5 @@ fn format_code_result(result_map: &HashMap<u8, usize>) -> Vec<(ResponseCode, usi
             let query_type = trust_dns_client::op::ResponseCode::from(0, *a.0);
             (query_type, *a.1)
         })
-        .collect::<Vec<(ResponseCode, usize)>>()
+        .collect::<Vec<(ResponseCode, u64)>>()
 }
