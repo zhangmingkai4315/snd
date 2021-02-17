@@ -87,19 +87,24 @@ impl Runner {
                     worker.run(id.id, interval_snd)
                 }));
             }
+            drop(interval_snd);
             s.spawn(|_| {
                 debug!("start collection interval data");
-                loop {
+                'outer: loop {
                     let mut interval_query_store_total = StatusStore::new();
                     let mut interval_response_store_total = StatusStore::new();
                     let mut report = RunnerReport::new();
 
                     for _ in 0..worker_number {
-                        let status = interval_rcv.recv().unwrap();
-                        interval_query_store_total = interval_query_store_total + status.0.clone();
-                        interval_response_store_total =
-                            interval_response_store_total + status.1.clone();
-                        // info!("receive interval status from workers {:?}{:?}", status.0, status.1);
+                        match interval_rcv.recv() {
+                            Ok(status) => {
+                                interval_query_store_total =
+                                    interval_query_store_total + status.0.clone();
+                                interval_response_store_total =
+                                    interval_response_store_total + status.1.clone();
+                            }
+                            _ => break 'outer,
+                        }
                     }
                     report.set_producer_report(interval_query_store_total);
                     report.set_consumer_report(interval_response_store_total.clone());

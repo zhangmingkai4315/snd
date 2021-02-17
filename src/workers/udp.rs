@@ -147,6 +147,7 @@ impl Worker for UDPWorker {
                 }
             }
         }
+        std::mem::drop(sender);
         producer
             .store
             .set_send_duration(stop_sender_timer.duration_since(start).unwrap());
