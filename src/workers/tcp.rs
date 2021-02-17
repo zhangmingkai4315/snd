@@ -1,25 +1,26 @@
-use super::{MessageOrHeader, Worker, HEADER_SIZE};
-use crate::runner::consumer::ResponseConsumer;
-use crate::runner::report::StatusStore;
-use crate::runner::{producer::PacketGeneratorStatus, QueryProducer};
-use crate::utils::Argument;
-
-use mio::net::UdpSocket;
-use mio::{Events, Interest, Poll, Token};
-use std::collections::HashMap;
-use std::ops::Add;
-use std::thread::sleep;
+use std::io::{Read, Write};
 use trust_dns_client::op::Header;
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
-pub struct UDPWorker {
+use super::{MessageOrHeader, Worker, HEADER_SIZE};
+use crate::runner::consumer::ResponseConsumer;
+use crate::runner::producer::PacketGeneratorStatus;
+use crate::runner::report::StatusStore;
+use crate::runner::QueryProducer;
+use crate::utils::Argument;
+use mio::{net::TcpStream, Events, Interest, Poll, Token};
+use std::collections::HashMap;
+use std::ops::Add;
+use std::thread::sleep;
+
+pub struct TCPWorker {
     arguments: Argument,
     poll: Poll,
     events: Events,
-    sockets: Vec<UdpSocket>,
+    sockets: Vec<TcpStream>,
 }
 
-impl Worker for UDPWorker {
+impl Worker for TCPWorker {
     fn run(
         &mut self,
         id: usize,
@@ -46,14 +47,13 @@ impl Worker for UDPWorker {
 
         'outer: loop {
             for event in self.events.iter() {
-                // debug!("loop for events");
                 match event.token() {
                     Token(i) if event.is_writable() => {
                         match producer.retrieve() {
                             PacketGeneratorStatus::Success(data, qtype) => {
-                                let key = ((data[0] as u16) << 8) | (data[1] as u16);
+                                let key = ((data[2] as u16) << 8) | (data[3] as u16);
                                 time_store.insert(key, chrono::Utc::now().timestamp_nanos());
-                                if let Err(e) = self.sockets[i].send(data) {
+                                if let Err(e) = self.sockets[i].write(data) {
                                     error!("send error : {}", e);
                                 }
                                 send_counter += 1;
@@ -75,13 +75,13 @@ impl Worker for UDPWorker {
                     }
                     Token(i) if event.is_readable() => {
                         // Read Event
-                        let mut buffer = vec![0; HEADER_SIZE];
-                        if let Ok(size) = self.sockets[i].recv(&mut buffer) {
+                        let mut buffer = vec![0; HEADER_SIZE + 2];
+                        if let Ok(size) = self.sockets[i].read(&mut buffer) {
                             debug!(
                                 "receive success in socket {} current={} cpu={}",
                                 i, receive_counter, id
                             );
-                            let key = ((buffer[0] as u16) << 8) | (buffer[1] as u16);
+                            let key = ((buffer[2] as u16) << 8) | (buffer[3] as u16);
                             let duration = match time_store.get(&key) {
                                 Some(start) => {
                                     (chrono::Utc::now().timestamp_nanos() - start) as f64
@@ -90,7 +90,7 @@ impl Worker for UDPWorker {
                                 _ => 0.0,
                             };
                             register_sockets[i] = true;
-                            if let Ok(message) = Header::from_bytes(&buffer[..size]) {
+                            if let Ok(message) = Header::from_bytes(&buffer[2..size]) {
                                 consumer.receive(&MessageOrHeader::Header((message, duration)));
                             } else {
                                 error!("parse dns message error");
@@ -163,45 +163,117 @@ impl Worker for UDPWorker {
     }
 }
 
-impl UDPWorker {
+impl TCPWorker {
     pub fn new(arguments: Argument) -> Box<dyn Worker> {
         let server_port = format!("{}:{}", arguments.server, arguments.port);
-        let source_ip_addr = format!("{}:0", arguments.source);
         let poll = Poll::new().expect("create async poll fail");
         let events = Events::with_capacity(1024);
         let mut sockets = vec![];
 
         for i in 0..arguments.client {
-            let mut socket = UdpSocket::bind(
-                source_ip_addr
-                    .parse()
-                    .expect("source ip addr is not set correct"),
-            )
-            .unwrap();
-            if let Err(e) = socket.connect(
+            match TcpStream::connect(
                 server_port
                     .parse()
                     .expect("server ip and port can't be connect success"),
             ) {
-                error!("{}", e.to_string());
-                continue;
+                Err(e) => {
+                    error!("{}", e.to_string());
+                    continue;
+                }
+                Ok(mut stream) => {
+                    poll.registry()
+                        .register(
+                            &mut stream,
+                            Token(i),
+                            Interest::READABLE | Interest::WRITABLE,
+                        )
+                        .expect("registr event fail");
+                    debug!("register for socket {}", i);
+                    sockets.push(stream);
+                }
             }
-            poll.registry()
-                .register(
-                    &mut socket,
-                    Token(i),
-                    Interest::READABLE | Interest::WRITABLE,
-                )
-                .expect("registr event fail");
-            debug!("register for socket {}", i);
-            sockets.push(socket);
         }
-
-        Box::new(UDPWorker {
+        Box::new(TCPWorker {
             arguments: arguments.clone(),
             poll,
             events,
             sockets,
         })
     }
+
+    // pub fn new(
+    //     arguments: Argument,
+    //     receiver: Arc<Mutex<Receiver<Vec<u8>>>>,
+    //     result_sender: Sender<MessageOrHeader>,
+    // ) -> TCPWorker {
+    //     let rx = receiver.clone();
+    //     let server_port = format!("{}:{}", arguments.server, arguments.port);
+    //     let check_all_message = arguments.check_all_message;
+    //
+    //     // stream.set_nonblocking(true).expect("set tcp unblock fail");
+    //     let thread = std::thread::spawn(move || {
+    //         // TODO : tcp source ip setting
+    //         let mut stream = TcpStream::connect(server_port.clone())
+    //             .expect(format!("unable to connect to server :{}", server_port).as_str());
+    //
+    //         if let Err(e) = stream.set_read_timeout(Some(std::time::Duration::from_secs(
+    //             arguments.timeout as u64,
+    //         ))) {
+    //             error!("read_timeout {:?}", e);
+    //         }
+    //         loop {
+    //             let data = match rx.lock().unwrap().recv() {
+    //                 Ok(data) => data,
+    //                 Err(_) => {
+    //                     break;
+    //                 }
+    //             };
+    //             debug!("send {:?}", data.as_slice());
+    //             let start = Instant::now();
+    //             match stream.write(data.as_slice()) {
+    //                 Err(e) => {
+    //                     println!("send error : {}", e);
+    //                 }
+    //                 Ok(_) => {}
+    //             };
+    //             let mut length = vec![0u8; 2];
+    //             if let Err(_e) = stream.read_exact(&mut length) {
+    //                 continue;
+    //             };
+    //             let size = (length[0] as usize) << 8 | length[1] as usize;
+    //             let mut data = vec![0; size];
+    //             if let Err(e) = stream.read_exact(&mut data) {
+    //                 debug!("receive error: {}", e.to_string())
+    //             }
+    //             if check_all_message == true {
+    //                 if let Ok(message) = Message::from_bytes(data.as_slice()) {
+    //                     if let Err(e) = result_sender.send(MessageOrHeader::Message((
+    //                         message,
+    //                         start.elapsed().as_secs_f64(),
+    //                     ))) {
+    //                         error!("send packet: {}", e.to_string())
+    //                     };
+    //                 }
+    //             } else {
+    //                 if let Ok(message) = Header::from_bytes(&data[0..HEADER_SIZE]) {
+    //                     let code = message.response_code();
+    //                     if code != trust_dns_client::proto::op::ResponseCode::NoError.low() {
+    //                         println!("{} --- {:?}", size, message)
+    //                     }
+    //                     if let Err(e) = result_sender.send(MessageOrHeader::Header((
+    //                         message,
+    //                         start.elapsed().as_secs_f64(),
+    //                     ))) {
+    //                         error!("send packet: {}", e.to_string())
+    //                     };
+    //                 }
+    //             }
+    //         }
+    //         debug!("tcp worker thread exit success");
+    //         drop(result_sender);
+    //     });
+    //     TCPWorker {
+    //         write_thread: Some(thread),
+    //     }
+    // }
 }

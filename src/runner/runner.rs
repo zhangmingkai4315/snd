@@ -1,6 +1,7 @@
 use crate::runner::report::{RunnerReport, StatusStore};
 use crate::utils::utils::cpu_mode_to_cpu_cores;
-use crate::utils::Argument;
+use crate::utils::{Argument, Protocol};
+use crate::workers::tcp::TCPWorker;
 use crate::workers::{
     // doh::DOHWorker, tcp::TCPWorker,  udp_async::UDPAsyncWorker,dot::DoTWorker,
     udp::UDPWorker,
@@ -20,55 +21,60 @@ pub struct Runner {
 impl Runner {
     pub fn new(arguments: Argument) -> Result<Runner, String> {
         let protocol = arguments.protocol.clone();
-        match protocol {
-            _ => {
-                let mut workers:std::vec::Vec<(std::boxed::Box<(dyn Worker + 'static)>, core_affinity::CoreId)> = vec![];
-                let bind_cpu = arguments.bind_cpu.clone();
-                match cpu_mode_to_cpu_cores(bind_cpu) {
-                    Err(e) => {
-                        return Err(format!("{}", e.to_string()));
-                    },
-                    Ok(v) => {
-                        debug!("bind worker threads to cpu cores: {:?}", v);
-                        let core_number = v.len();
-                        for core_id in v {
-                            let mut args = arguments.clone();
-                            if args.qps != 0 {
-                                args.qps = args.qps / core_number;
+        let worker_factory: fn(Argument) -> Box<dyn Worker> = match protocol {
+            Protocol::TCP => TCPWorker::new,
+            _ => UDPWorker::new,
+        };
+        let mut workers: std::vec::Vec<(
+            std::boxed::Box<(dyn Worker + 'static)>,
+            core_affinity::CoreId,
+        )> = vec![];
+        let bind_cpu = arguments.bind_cpu.clone();
+        match cpu_mode_to_cpu_cores(bind_cpu) {
+            Err(e) => {
+                return Err(format!("{}", e.to_string()));
+            }
+            Ok(v) => {
+                debug!("bind worker threads to cpu cores: {:?}", v);
+                let core_number = v.len();
+                for (index, core_id) in v.iter().enumerate() {
+                    let mut args = arguments.clone();
+                    if args.qps != 0 {
+                        args.qps = args.qps / core_number + {
+                            if index == 0 {
+                                args.qps % core_number
+                            } else {
+                                0
                             }
-                            if args.max != 0 {
-                                args.max = args.max / core_number;
+                        };
+                    }
+                    if args.max != 0 {
+                        args.max = args.max / core_number + {
+                            if index == 0 {
+                                args.max % core_number
+                            } else {
+                                0
                             }
-                            workers.push((Box::new(UDPWorker::new(args)), core_id));
+                        };
+                    }
+                    if args.client != 0 {
+                        args.client = args.client / core_number + {
+                            if index == 0 {
+                                args.client % core_number
+                            } else {
+                                0
+                            }
                         }
                     }
+                    workers.push((worker_factory(args), *core_id));
                 }
-                Ok(Runner {
-                    arguments: arguments.clone(),
-                    report: RunnerReport::new(),
-                    workers,
-                })
             }
-            // Protocol::TCP => {
-            //     workers.push(Box::new(TCPWorker::new(
-            //         arguments.clone(),
-            //         receiver.clone(),
-            //         result_sender,
-            //     )));
-            // }
-            // Protocol::DOT => {
-            //     workers.push(Box::new(DoTWorker::new(
-            //         arguments.clone(),
-            //         receiver.clone(),
-            //         result_sender,
-            //     )));
-            // }
-            // Protocol::DOH => workers.push(Box::new(DOHWorker::new(
-            //     arguments.clone(),
-            //     receiver.clone(),
-            //     result_sender,
-            // ))),
         }
+        Ok(Runner {
+            arguments: arguments.clone(),
+            report: RunnerReport::new(),
+            workers,
+        })
     }
     pub fn run(&mut self) {
         debug!("start runner and generate many threads");
