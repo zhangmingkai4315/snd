@@ -1,34 +1,53 @@
-use crate::runner::report::RunnerReport;
+use crate::runner::report::{RunnerReport, StatusStore};
+use crate::utils::utils::cpu_mode_to_cpu_cores;
 use crate::utils::Argument;
 use crate::workers::{
     // doh::DOHWorker, tcp::TCPWorker,  udp_async::UDPAsyncWorker,dot::DoTWorker,
     udp::UDPWorker,
     Worker,
 };
+use core_affinity;
+use core_affinity::CoreId;
 use std::collections::HashMap;
 use std::hash::Hash;
 
 pub struct Runner {
     arguments: Argument,
-    worker: Box<dyn Worker>,
+    workers: Vec<(Box<dyn Worker>, CoreId)>,
     report: RunnerReport,
 }
 
 impl Runner {
-    pub fn new(arguments: Argument) -> Runner {
-        // let (sender, receiver) = channel();
-        // let (sender, receiver) = bounded(arguments.client);
-        // let receiver = Arc::new(Mutex::new(receiver));
-        // let origin_arguments = Arc::new(arguments.clone());
-        // let (status_sender, status_receiver) = bounded(arguments.client);
-        // let query_status_sender = status_sender.clone();
-        match arguments.protocol {
+    pub fn new(arguments: Argument) -> Result<Runner, String> {
+        let protocol = arguments.protocol.clone();
+        match protocol {
             _ => {
-                Runner {
+                let mut workers:std::vec::Vec<(std::boxed::Box<(dyn Worker + 'static)>, core_affinity::CoreId)> = vec![];
+                let bind_cpu = arguments.bind_cpu.clone();
+                match cpu_mode_to_cpu_cores(bind_cpu) {
+                    Err(e) => {
+                        return Err(format!("{}", e.to_string()));
+                    },
+                    Ok(v) => {
+                        debug!("bind worker threads to cpu cores: {:?}", v);
+                        let core_number = v.len();
+                        for core_id in v {
+                            let mut args = arguments.clone();
+                            if args.qps != 0 {
+                                args.qps = args.qps / core_number;
+                            }
+                            if args.max != 0 {
+                                args.max = args.max / core_number;
+                            }
+                            workers.push((Box::new(UDPWorker::new(args)), core_id));
+                        }
+                    }
+                }
+                Ok(Runner {
                     arguments: arguments.clone(),
                     report: RunnerReport::new(),
-                    worker: Box::new(UDPWorker::new(arguments.clone())),
-                }
+                    workers,
+                })
             }
             // Protocol::TCP => {
             //     workers.push(Box::new(TCPWorker::new(
@@ -52,12 +71,64 @@ impl Runner {
         }
     }
     pub fn run(&mut self) {
-        let (query_store_total, response_store_total) = self.worker.run();
+        debug!("start runner and generate many threads");
+        let worker_number = self.workers.len();
+        let mut query_store_total = StatusStore::new();
+        let mut response_store_total = StatusStore::new();
+
+        let (snd, rcv) = crossbeam_channel::unbounded();
+        let (interval_snd, interval_rcv) = crossbeam_channel::bounded(worker_number);
+        if let Err(e) = crossbeam::scope(|s| {
+            let mut handles = vec![];
+            for (worker, id) in &mut self.workers {
+                let interval_snd = interval_snd.clone();
+                handles.push(s.spawn(move |_| {
+                    core_affinity::set_for_current(id.clone());
+                    worker.run(id.id, interval_snd)
+                }));
+            }
+            s.spawn(|_| {
+                debug!("start collection interval data");
+                loop {
+                    let mut interval_query_store_total = StatusStore::new();
+                    let mut interval_response_store_total = StatusStore::new();
+                    let mut report = RunnerReport::new();
+
+                    for _ in 0..worker_number {
+                        let status = interval_rcv.recv().unwrap();
+                        interval_query_store_total = interval_query_store_total + status.0.clone();
+                        interval_response_store_total =
+                            interval_response_store_total + status.1.clone();
+                        // info!("receive interval status from workers {:?}{:?}", status.0, status.1);
+                    }
+                    report.set_producer_report(interval_query_store_total);
+                    report.set_consumer_report(interval_response_store_total.clone());
+                    report.set_histogram_report(interval_response_store_total);
+                    report.report("stdout".to_string());
+                }
+            });
+
+            for i in handles {
+                let status = i.join().unwrap();
+                if let Err(e) = snd.send(status) {
+                    error!("send status to channel fail: {:?}", e.to_string());
+                };
+            }
+        }) {
+            error!("thread create fail: {:?}", e);
+        };
+        for _ in 0..worker_number {
+            let status = rcv.recv().unwrap();
+            query_store_total = query_store_total + status.0;
+            response_store_total = response_store_total + status.1;
+        }
+
+        // let (query_store_total, response_store_total) = self.worker.run();
         self.report.set_producer_report(query_store_total);
         self.report
             .set_consumer_report(response_store_total.clone());
         self.report.set_histogram_report(response_store_total);
-        self.report.report(self.arguments.clone());
+        self.report.report(self.arguments.output.clone());
     }
 }
 

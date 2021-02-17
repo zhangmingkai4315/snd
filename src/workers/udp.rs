@@ -7,8 +7,9 @@ use crate::utils::Argument;
 use mio::net::UdpSocket;
 use mio::{Events, Interest, Poll, Token};
 use std::collections::HashMap;
+use std::ops::Add;
 use std::thread::sleep;
-use trust_dns_client::op::{Header, Message};
+use trust_dns_client::op::Header;
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
 pub struct UDPWorker {
@@ -19,10 +20,15 @@ pub struct UDPWorker {
 }
 
 impl Worker for UDPWorker {
-    fn run(&mut self) -> (StatusStore, StatusStore) {
+    fn run(
+        &mut self,
+        id: usize,
+        sender: crossbeam_channel::Sender<(StatusStore, StatusStore)>,
+    ) -> (StatusStore, StatusStore) {
         let arguments = self.arguments.clone();
-        let edns_size_local = self.arguments.edns_size as usize;
-        let check_all_message = self.arguments.check_all_message;
+        let interval = arguments.output_interval as u64;
+        let mut next_status_send =
+            std::time::SystemTime::now().add(std::time::Duration::from_secs(interval));
         let mut producer = QueryProducer::new(arguments.clone());
         let mut consumer = ResponseConsumer::new();
         #[allow(unused_assignments)]
@@ -37,6 +43,7 @@ impl Worker for UDPWorker {
         let sockets_number = self.sockets.len();
         let mut register_sockets = vec![false; sockets_number];
         let mut time_store = HashMap::new();
+
         'outer: loop {
             for event in self.events.iter() {
                 // debug!("loop for events");
@@ -51,7 +58,10 @@ impl Worker for UDPWorker {
                                 }
                                 send_counter += 1;
                                 producer.store.update_query(qtype);
-                                debug!("send success in socket {} {}", i, send_counter);
+                                debug!(
+                                    "send success in socket {} current={} cpu={}",
+                                    i, send_counter, id
+                                );
                                 stop_sender_timer = std::time::SystemTime::now();
                             }
                             PacketGeneratorStatus::Wait(wait) => {
@@ -65,53 +75,36 @@ impl Worker for UDPWorker {
                     }
                     Token(i) if event.is_readable() => {
                         // Read Event
-                        if check_all_message == true {
-                            let mut buffer = vec![0; edns_size_local];
-                            if let Ok(size) = self.sockets[i].recv(&mut buffer) {
-                                debug!("receive success in socket {} {}", i, receive_counter);
-                                let key = ((buffer[0] as u16) << 8) | (buffer[1] as u16);
-                                let duration = match time_store.get(&key) {
-                                    Some(start) => {
-                                        (chrono::Utc::now().timestamp_nanos() - start) as f64
-                                            / 1000000000.0
-                                    }
-                                    _ => 0.0,
-                                };
-                                register_sockets[i] = true;
-                                if let Ok(message) = Message::from_bytes(&buffer[..size]) {
-                                    consumer
-                                        .receive(&MessageOrHeader::Message((message, duration)));
-                                } else {
-                                    error!("parse dns message error");
+                        let mut buffer = vec![0; HEADER_SIZE];
+                        if let Ok(size) = self.sockets[i].recv(&mut buffer) {
+                            debug!(
+                                "receive success in socket {} current={} cpu={}",
+                                i, receive_counter, id
+                            );
+                            let key = ((buffer[0] as u16) << 8) | (buffer[1] as u16);
+                            let duration = match time_store.get(&key) {
+                                Some(start) => {
+                                    (chrono::Utc::now().timestamp_nanos() - start) as f64
+                                        / 1000000000.0
                                 }
-                                receive_counter += 1;
+                                _ => 0.0,
+                            };
+                            register_sockets[i] = true;
+                            if let Ok(message) = Header::from_bytes(&buffer[..size]) {
+                                consumer.receive(&MessageOrHeader::Header((message, duration)));
+                            } else {
+                                error!("parse dns message error");
                             }
-                        } else {
-                            let mut buffer = vec![0; HEADER_SIZE];
-                            if let Ok(size) = self.sockets[i].recv(&mut buffer) {
-                                debug!("receive success in socket {} {}", i, receive_counter);
-                                let key = ((buffer[0] as u16) << 8) | (buffer[1] as u16);
-                                let duration = match time_store.get(&key) {
-                                    Some(start) => {
-                                        (chrono::Utc::now().timestamp_nanos() - start) as f64
-                                            / 1000000000.0
-                                    }
-                                    _ => 0.0,
-                                };
-                                register_sockets[i] = true;
-                                if let Ok(message) = Header::from_bytes(&buffer[..size]) {
-                                    consumer.receive(&MessageOrHeader::Header((message, duration)));
-                                } else {
-                                    error!("parse dns message error");
-                                }
-                                receive_counter += 1;
-                            }
+                            receive_counter += 1;
                         }
                         if (max_send > 0 && (receive_counter == max_send))
                             || stop_sender_timer.elapsed().unwrap()
                                 > std::time::Duration::from_secs(5)
                         {
-                            debug!("should break loop {} {}", send_counter, receive_counter);
+                            debug!(
+                                "should break loop {} {} cpu={}",
+                                send_counter, receive_counter, id
+                            );
                             break 'outer;
                         }
                     }
@@ -138,17 +131,27 @@ impl Worker for UDPWorker {
                 error!("poll event fail: {}", e.to_string());
                 break;
             }
+            if interval != 0 {
+                let now = std::time::SystemTime::now();
+                if now >= next_status_send {
+                    producer
+                        .store
+                        .set_send_duration(now.duration_since(start).unwrap());
+                    consumer.store.set_receive_total(receive_counter);
+                    consumer.update_report();
+                    if let Err(err) = sender.send((producer.store.clone(), consumer.store.clone()))
+                    {
+                        error!("send interval status fail: {:?}", err)
+                    }
+                    next_status_send = now.add(std::time::Duration::from_secs(interval));
+                }
+            }
         }
-        debug!("break the event loop");
         producer
             .store
             .set_send_duration(stop_sender_timer.duration_since(start).unwrap());
         consumer.store.set_receive_total(receive_counter);
         consumer.receive(&MessageOrHeader::End);
-        debug!(
-            "producer = {:?} \n consumer = {:?}",
-            producer.store, consumer.store
-        );
         for socket in self.sockets.iter_mut() {
             self.poll
                 .registry()

@@ -1,5 +1,3 @@
-use chrono::DateTime;
-use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
@@ -11,7 +9,6 @@ use trust_dns_client::rr::RecordType;
 // use crate::histogram::{HistogramReport};
 use crate::runner::histogram::HistogramReport;
 use crate::runner::runner::merge_map;
-use crate::utils::Argument;
 
 #[derive(Default, Clone, Debug)]
 pub struct StatusStore {
@@ -172,7 +169,6 @@ impl StatusStore {
 }
 
 pub struct RunnerReport {
-    start: std::time::SystemTime,
     producer_report: Option<StatusStore>,
     consumer_report: Option<StatusStore>,
     histogram: Option<HistogramReport>,
@@ -181,7 +177,6 @@ pub struct RunnerReport {
 impl RunnerReport {
     pub fn new() -> RunnerReport {
         RunnerReport {
-            start: std::time::SystemTime::now(),
             producer_report: None,
             consumer_report: None,
             histogram: None,
@@ -197,20 +192,20 @@ impl RunnerReport {
         self.histogram = store.report;
     }
 
-    pub fn report(&self, arguments: Argument) {
+    pub fn report(&self, target: String) {
         let mut output = ReportType::Basic;
-        let report_file_name = arguments.output.to_ascii_lowercase();
+        let report_file_name = target.to_ascii_lowercase();
         if report_file_name.ends_with(".json") {
             output = ReportType::JSON
         } else if report_file_name.ends_with(".yaml") {
             output = ReportType::YAML
         }
-        output.format(self, arguments)
+        output.format(self, target)
     }
 }
 
 pub trait ReportOutput {
-    fn format(&self, report: &RunnerReport, arguments: Argument);
+    fn format(&self, report: &RunnerReport, target: String);
 }
 
 #[allow(dead_code)]
@@ -223,11 +218,10 @@ pub enum ReportType {
 
 struct BasicStats {
     response_code: Vec<(ResponseCode, u64)>,
-    start_time: DateTime<Local>,
-    end_time: DateTime<Local>,
+    duration: std::time::Duration,
     query_total: u64,
     response_total: u64,
-    qps: f64,
+    qps: u64,
     query_rate: f64,
     min_lantency: f64,
     max_lantency: f64,
@@ -241,12 +235,10 @@ struct BasicStats {
 #[derive(Serialize, Deserialize, Debug)]
 struct BasicStatsSerializable {
     response_code: Vec<ItemKeyValue>,
-    time_cost: String,
-    start_time: String,
-    end_time: String,
+    duration: std::time::Duration,
     query_total: u64,
     response_total: u64,
-    qps: f64,
+    qps: u64,
     query_rate: f64,
     min_lantency: f64,
     max_lantency: f64,
@@ -279,9 +271,7 @@ impl BasicStats {
                     value: a.1,
                 })
                 .collect(),
-            time_cost: (self.end_time - self.start_time).to_string(),
-            start_time: self.start_time.format("%+").to_string(),
-            end_time: self.end_time.format("%+").to_string(),
+            duration: self.duration,
             query_total: self.query_total,
             response_total: self.response_total,
             qps: self.qps,
@@ -299,16 +289,14 @@ impl BasicStats {
         let response_code =
             format_code_result(&report.consumer_report.as_ref().unwrap().reply_code);
 
-        let start_time: DateTime<Local> = report.start.into();
-        let end_time: DateTime<Local> = report
-            .consumer_report
+        let duration = report
+            .producer_report
             .as_ref()
             .unwrap()
-            .last_update
-            .expect("thread exit abnormal")
-            .into();
-        let duration_second = (end_time - start_time).num_milliseconds() as f64 / 1000 as f64;
-        let qps = report.producer_report.as_ref().unwrap().query_total as f64 / duration_second;
+            .send_duration
+            .unwrap();
+        let qps = (report.producer_report.as_ref().unwrap().query_total as f64
+            / duration.as_secs_f64()) as u64;
         let query_total = report.producer_report.as_ref().unwrap().query_total;
         let response_total = report.consumer_report.as_ref().unwrap().receive_total;
         let query_rate = report.consumer_report.as_ref().unwrap().receive_total as f64 * 100.0
@@ -317,8 +305,7 @@ impl BasicStats {
         if report.histogram.is_none() {
             BasicStats {
                 response_code,
-                start_time,
-                end_time,
+                duration,
                 qps,
                 query_total,
                 response_total,
@@ -335,8 +322,7 @@ impl BasicStats {
             let histogram = report.histogram.as_ref().unwrap();
             BasicStats {
                 response_code,
-                start_time,
-                end_time,
+                duration,
                 qps,
                 query_total,
                 response_total,
@@ -483,7 +469,7 @@ impl ReportType {
         }
     }
 
-    fn basic(report: &RunnerReport, arguments: Argument) {
+    fn basic(report: &RunnerReport) {
         let formatted = ReportType::formatted_data(report);
         let extension_info = formatted.extension;
         let basic_info = formatted.basic;
@@ -494,12 +480,6 @@ impl ReportType {
             .map(|a| format!("{}={}", a.key, a.value))
             .collect();
 
-        let response: Vec<_> = extension_info
-            .response_type
-            .iter()
-            .map(|a| format!("{}={}({:.2}%)", a.key, a.value, a.rate))
-            .collect();
-
         let response_code: String = basic_info
             .response_code
             .iter()
@@ -507,32 +487,9 @@ impl ReportType {
             .collect::<Vec<String>>()
             .join(",");
 
-        let answer_result: String = extension_info
-            .answer_result
-            .iter()
-            .map(|a| format!("{}={}", a.key, a.value))
-            .collect::<Vec<String>>()
-            .join(",");
-
-        let additional_result: String = extension_info
-            .additional_result
-            .iter()
-            .map(|a| format!("{}={}", a.key, a.value))
-            .collect::<Vec<String>>()
-            .join(",");
-
-        let authority_result: String = extension_info
-            .authority_result
-            .iter()
-            .map(|a| format!("{}={}", a.key, a.value))
-            .collect::<Vec<String>>()
-            .join(",");
-
-        let mut out_put = format!(
+        let out_put = format!(
             "------------   Report   --------------
-      Total Cost: {} (+time wait)
-      Start Time: {}
-        End Time: {}
+      Total Cost: {:?}
      Total Query: {}
         Question: {}
   Total Response: {}
@@ -546,9 +503,7 @@ impl ReportType {
      95% Latency: {:?}
      90% Latency: {:?}
      50% Latency: {:?}",
-            basic_info.time_cost,
-            basic_info.start_time,
-            basic_info.end_time,
+            basic_info.duration,
             basic_info.query_total,
             query.join(","),
             basic_info.response_total,
@@ -563,42 +518,26 @@ impl ReportType {
             std::time::Duration::from_secs_f64(basic_info.p90),
             std::time::Duration::from_secs_f64(basic_info.p50),
         );
-        if arguments.check_all_message == true {
-            let extension_output = format!(
-                "
-        Question: {}
-          Answer: {}
-       Authority: {}
-      Additional: {}",
-                response.join(","),
-                answer_result,
-                authority_result,
-                additional_result
-            );
-            out_put += extension_output.as_str();
-        }
         println!("{}", out_put);
     }
-    fn yaml(report: &RunnerReport, arguments: Argument) {
+    fn yaml(report: &RunnerReport, output: String) {
         let formatted = ReportType::formatted_data(report);
-        let file = arguments.output;
         match serde_yaml::to_string(&formatted) {
             Err(err) => error!("yaml convert fail: {}", err.to_string()),
             Ok(v) => {
-                let mut buffer = File::create(file).expect("create file error");
+                let mut buffer = File::create(output).expect("create file error");
                 if let Err(e) = buffer.write_all(v.as_bytes()) {
                     error!("{}", e.to_string())
                 }
             }
         }
     }
-    fn json(report: &RunnerReport, arguments: Argument) {
+    fn json(report: &RunnerReport, output: String) {
         let formatted = ReportType::formatted_data(report);
-        let file = arguments.output;
         match serde_json::to_string_pretty(&formatted) {
             Err(err) => error!("json convert fail: {}", err.to_string()),
             Ok(v) => {
-                let mut buffer = File::create(file).expect("create file error");
+                let mut buffer = File::create(output).expect("create file error");
                 if let Err(e) = buffer.write_all(v.as_bytes()) {
                     error!("{}", e.to_string())
                 }
@@ -608,11 +547,11 @@ impl ReportType {
 }
 
 impl ReportOutput for ReportType {
-    fn format(&self, report: &RunnerReport, arguments: Argument) {
+    fn format(&self, report: &RunnerReport, output: String) {
         match self {
-            ReportType::Basic => ReportType::basic(report, arguments),
-            ReportType::YAML => ReportType::yaml(report, arguments),
-            ReportType::JSON => ReportType::json(report, arguments),
+            ReportType::Basic => ReportType::basic(report),
+            ReportType::YAML => ReportType::yaml(report, output),
+            ReportType::JSON => ReportType::json(report, output),
         }
     }
 }

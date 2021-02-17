@@ -1,3 +1,4 @@
+use crate::utils::utils::cpu_mode_to_cpu_cores;
 use num_cpus;
 use std::fmt;
 use std::fmt::Formatter;
@@ -116,7 +117,8 @@ OPTIONS:
     -m, --max <max>                                max dns packets will be send [default: 100]
     -c, --client <client>                          concurrent clients numbers, set to 0 will replace with the number of cpu cores [default: 0]
     -f, --file <file>                              the dns query file, default using -d for single domain query [default: \"\"]
-    -o, --output <file>                            format output report to stdout, .json or .yaml file [default: \"text\"]
+    -o, --output <file>                            format output report to stdout, .json or .yaml file [default: \"stdout\"]
+    -I, --interval <second>                        output result interval for dns benchmark [default: 0]
         --edns-size <edns-size>                    set opt max EDNS buffer size [default: 1232]
         --protocol <protocol>                      the packet protocol for send dns request [default: UDP]
                                                    support protocols [UDP, TCP, DOT, DOH]
@@ -125,14 +127,15 @@ OPTIONS:
         --source-ip <source>                       set the source ip address [default: 0.0.0.0]
         --timeout <timeout>                        timeout for wait the packet arrive [default: 5]
         --packet-id <packet-id>                    set to zero will random select a packet id [default: 0]
+        --bind-cpu <mode>                          bind worker to cpu [default: random]
+                                                   option value [\"random\", \"all\", \"0,1,2,3\", \"0,3\"]
+
 FLAGS:
-        --check-all-message    default only check response header
         --debug                enable debug mode
         --disable-edns         disable EDNS
         --disable-rd           RD (recursion desired) bit in the query
         --enable-cd            CD (checking disabled) bit in the query
         --enable-dnssec        enable dnssec
-        --enable-async         async send packet mode
 HELP:
     -h, --help                 Prints help information
 VERSION:
@@ -219,12 +222,14 @@ pub struct Argument {
     ]
     pub source: IpAddr,
 
-    #[structopt(long = "check-all-message")]
-    pub check_all_message: bool,
-    #[structopt(long = "enable-async")]
-    pub enable_async: bool,
-    #[structopt(short = "o", long = "output", default_value = "text")]
+    #[structopt(long = "bind-cpu", default_value = "random")]
+    pub bind_cpu: String,
+
+    #[structopt(short = "o", long = "output", default_value = "stdout")]
     pub output: String,
+
+    #[structopt(short = "I", long = "interval", default_value = "0")]
+    pub output_interval: usize,
 }
 
 impl Argument {
@@ -258,6 +263,17 @@ impl Argument {
         if self.client == 0 {
             self.client = num_cpus::get();
         }
+        if let Err(e) = cpu_mode_to_cpu_cores(self.bind_cpu.clone()) {
+            return Err(e.to_string());
+        }
+
+        if !(self.output.to_lowercase().ends_with(".json")
+            || self.output.to_lowercase().ends_with(".yaml")
+            || self.output.to_lowercase() == "stdout".to_string())
+        {
+            return Err("output result should be setting with -o example.json or -o example.yaml file or -o stdout".to_string());
+        }
+
         Ok(())
     }
 }
@@ -286,10 +302,10 @@ impl Default for Argument {
             disable_edns: false,
             edns_size: 0,
             debug: false,
-            enable_async: false,
             source: IpAddr::from_str("0.0.0.0").unwrap(),
-            check_all_message: false,
-            output: "".to_string(),
+            bind_cpu: "random".to_string(),
+            output: "stdout".to_string(),
+            output_interval: 0,
         }
     }
 }
@@ -317,8 +333,9 @@ Transport Protocol: {:?}
        Enable EDNS: {},
          EDNS Size: {},
      Enable DNSSEC: {},
- Check All Message: {},
-      Async Enable: {}\n",
+     Bind CPU Mode: {},
+            Output: {},
+          Interval: {:?}\n",
             env!("CARGO_PKG_VERSION"),
             {
                 if self.file.is_empty() {
@@ -369,8 +386,9 @@ Transport Protocol: {:?}
             self.disable_edns,
             self.edns_size,
             self.enable_dnssec,
-            self.check_all_message,
-            self.enable_async,
+            self.bind_cpu,
+            self.output,
+            std::time::Duration::from_secs(self.output_interval as u64),
         )
     }
 }

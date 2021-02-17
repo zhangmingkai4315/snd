@@ -1,5 +1,6 @@
 extern crate log;
 extern crate structopt;
+
 use env_logger::{Builder, Target};
 use lib::runner::Runner;
 use lib::utils::Argument;
@@ -21,6 +22,10 @@ fn main() {
         }
     });
     builder.init();
-    let mut runner = Runner::new(arg);
-    runner.run();
+    match Runner::new(arg) {
+        Ok(mut v) => v.run(),
+        Err(e) => {
+            println!("start runner error: {:?}", e);
+        }
+    }
 }

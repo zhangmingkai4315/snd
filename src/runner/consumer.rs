@@ -26,8 +26,11 @@ impl ResponseConsumer {
                 self.histogram.add(*elapse);
             }
             MessageOrHeader::End => {
-                self.store.update_histogram_report(self.histogram.report());
+                self.update_report();
             }
         }
+    }
+    pub fn update_report(&mut self) {
+        self.store.update_histogram_report(self.histogram.report());
     }
 }
