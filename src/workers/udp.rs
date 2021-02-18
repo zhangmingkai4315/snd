@@ -55,6 +55,7 @@ impl Worker for UDPWorker {
                                 time_store.insert(key, chrono::Utc::now().timestamp_nanos());
                                 if let Err(e) = self.sockets[i].send(data) {
                                     error!("send error : {}", e);
+                                    producer.return_back();
                                 }
                                 send_counter += 1;
                                 producer.store.update_query(qtype);

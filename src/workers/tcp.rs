@@ -8,16 +8,77 @@ use crate::runner::producer::PacketGeneratorStatus;
 use crate::runner::report::StatusStore;
 use crate::runner::QueryProducer;
 use crate::utils::Argument;
+use mio::event::Event;
+use mio::net::{TcpKeepalive, TcpSocket};
 use mio::{net::TcpStream, Events, Interest, Poll, Token};
 use std::collections::HashMap;
 use std::ops::Add;
 use std::thread::sleep;
+use std::time::Duration;
 
 pub struct TCPWorker {
     arguments: Argument,
     poll: Poll,
     events: Events,
     sockets: Vec<TcpStream>,
+    // server_port: String,
+}
+
+enum SocketStatus {
+    Close,
+    Success,
+    WouldBlock,
+    Err(String),
+}
+
+impl TCPWorker {
+    fn write_data(connection: &mut TcpStream, event: &Event, data: &[u8]) -> SocketStatus {
+        match connection.write(data) {
+            Ok(n) if n < data.len() => {
+                return SocketStatus::Err("partial write fail".to_string());
+            }
+            Ok(_) => SocketStatus::Success,
+            Err(ref err) if would_block(err) => SocketStatus::WouldBlock,
+            Err(ref err) if interrupted(err) => {
+                return TCPWorker::write_data(connection, event, data);
+            }
+            Err(err) => SocketStatus::Err(err.to_string()),
+        }
+    }
+
+    fn read_data(connection: &mut TcpStream, data: &mut [u8]) -> SocketStatus {
+        let mut received_data = vec![0; 512];
+        let mut bytes_read = 0;
+        loop {
+            match connection.read(&mut received_data[bytes_read..]) {
+                Ok(0) => {
+                    break;
+                }
+                Ok(n) => {
+                    bytes_read += n;
+                    if bytes_read == received_data.len() {
+                        received_data.resize(received_data.len() + 512, 0);
+                    }
+                }
+                Err(ref err) if would_block(err) => {
+                    break;
+                }
+                Err(ref err) if interrupted(err) => {
+                    continue;
+                }
+                // Other errors we'll consider fatal.
+                Err(err) => {
+                    return SocketStatus::Err(err.to_string());
+                }
+            };
+        }
+        if bytes_read != 0 {
+            data.copy_from_slice(&received_data[0..data.len()]);
+            SocketStatus::Success
+        } else {
+            SocketStatus::Close
+        }
+    }
 }
 
 impl Worker for TCPWorker {
@@ -41,47 +102,69 @@ impl Worker for TCPWorker {
         if let Err(e) = self.poll.poll(&mut self.events, None) {
             error!("poll event fail: {}", e.to_string());
         };
-        let sockets_number = self.sockets.len();
-        let mut register_sockets = vec![false; sockets_number];
         let mut time_store = HashMap::new();
-
+        let mut dns_packet = vec![0u8; 14];
         'outer: loop {
             for event in self.events.iter() {
-                match event.token() {
-                    Token(i) if event.is_writable() => {
-                        match producer.retrieve() {
-                            PacketGeneratorStatus::Success(data, qtype) => {
-                                let key = ((data[2] as u16) << 8) | (data[3] as u16);
-                                time_store.insert(key, chrono::Utc::now().timestamp_nanos());
-                                if let Err(e) = self.sockets[i].write(data) {
-                                    error!("send error : {}", e);
+                let token = event.token();
+                let ref mut connection = self.sockets[token.0];
+                if event.is_writable() {
+                    debug!("socket {} is writable", token.0);
+                    match producer.retrieve() {
+                        PacketGeneratorStatus::Success(data, qtype) => {
+                            let key = ((data[2] as u16) << 8) | (data[3] as u16);
+                            time_store.insert(key, chrono::Utc::now().timestamp_nanos());
+                            match TCPWorker::write_data(connection, event, data) {
+                                SocketStatus::Success => {
+                                    send_counter += 1;
+                                    producer.store.update_query(qtype);
+                                    stop_sender_timer = std::time::SystemTime::now();
+                                    debug!(
+                                        "send success receive = {},  current = {}",
+                                        receive_counter, send_counter
+                                    );
+                                    self.poll
+                                        .registry()
+                                        .reregister(connection, token, Interest::READABLE)
+                                        .expect("reregister fail");
                                 }
-                                send_counter += 1;
-                                producer.store.update_query(qtype);
-                                debug!(
-                                    "send success in socket {} current={} cpu={}",
-                                    i, send_counter, id
-                                );
-                                stop_sender_timer = std::time::SystemTime::now();
-                            }
-                            PacketGeneratorStatus::Wait(wait) => {
-                                sleep(std::time::Duration::from_nanos(wait));
-                            }
-                            PacketGeneratorStatus::Stop => {
-                                // debug!("receive stop signal");
-                            }
-                        };
-                        register_sockets[i] = true;
+                                SocketStatus::WouldBlock => {
+                                    debug!("receive would block");
+                                    producer.return_back();
+                                }
+                                SocketStatus::Err(e) => {
+                                    debug!("send error: {}", e);
+                                    producer.return_back();
+                                }
+                                _ => {
+                                    debug!("send error with no clue");
+                                    producer.return_back();
+                                }
+                            };
+                        }
+                        PacketGeneratorStatus::Wait(wait) => {
+                            debug!("wait for next ticker");
+                            self.poll
+                                .registry()
+                                .reregister(connection, token, Interest::WRITABLE)
+                                .expect("reregister fail");
+                            // sleep(std::time::Duration::from_nanos(wait));
+                        }
+                        PacketGeneratorStatus::Stop => {
+                            debug!("receive stop signal");
+                        }
                     }
-                    Token(i) if event.is_readable() => {
-                        // Read Event
-                        let mut buffer = vec![0; HEADER_SIZE + 2];
-                        if let Ok(size) = self.sockets[i].read(&mut buffer) {
-                            debug!(
-                                "receive success in socket {} current={} cpu={}",
-                                i, receive_counter, id
-                            );
-                            let key = ((buffer[2] as u16) << 8) | (buffer[3] as u16);
+                }
+                if event.is_readable() {
+                    debug!("socket {} is readable", token.0);
+                    let result = TCPWorker::read_data(connection, dns_packet.as_mut_slice());
+                    match result {
+                        SocketStatus::Success => {
+                            self.poll
+                                .registry()
+                                .reregister(connection, token, Interest::WRITABLE)
+                                .expect("reregister fail");
+                            let key = ((dns_packet[2] as u16) << 8) | (dns_packet[3] as u16);
                             let duration = match time_store.get(&key) {
                                 Some(start) => {
                                     (chrono::Utc::now().timestamp_nanos() - start) as f64
@@ -89,41 +172,32 @@ impl Worker for TCPWorker {
                                 }
                                 _ => 0.0,
                             };
-                            register_sockets[i] = true;
-                            if let Ok(message) = Header::from_bytes(&buffer[2..size]) {
+                            debug!(
+                                "receive success receive = {},  current = {}",
+                                receive_counter, send_counter
+                            );
+                            if let Ok(message) = Header::from_bytes(&dns_packet[2..HEADER_SIZE + 2])
+                            {
                                 consumer.receive(&MessageOrHeader::Header((message, duration)));
+                                receive_counter += 1;
                             } else {
                                 error!("parse dns message error");
+                                continue;
                             }
-                            receive_counter += 1;
                         }
-                        if (max_send > 0 && (receive_counter == max_send))
-                            || stop_sender_timer.elapsed().unwrap()
-                                > std::time::Duration::from_secs(5)
-                        {
-                            debug!(
-                                "should break loop {} {} cpu={}",
-                                send_counter, receive_counter, id
-                            );
-                            break 'outer;
+                        _ => {
+                            error!("read socket fail")
                         }
-                    }
-                    _ => {
-                        warn!("Got event for unexpected token: {:?}", event);
                     }
                 }
-            }
-            for i in 0..sockets_number {
-                if register_sockets[i] == true {
-                    self.poll
-                        .registry()
-                        .reregister(
-                            &mut self.sockets[i],
-                            Token(i),
-                            Interest::WRITABLE | Interest::READABLE,
-                        )
-                        .expect("re register socket fail");
-                    register_sockets[i] = false;
+                if (max_send > 0 && (receive_counter == max_send))
+                    || stop_sender_timer.elapsed().unwrap() > std::time::Duration::from_secs(5)
+                {
+                    debug!(
+                        "should break loop {} {} cpu={}",
+                        send_counter, receive_counter, id
+                    );
+                    break 'outer;
                 }
             }
 
@@ -171,6 +245,10 @@ impl TCPWorker {
         let mut sockets = vec![];
 
         for i in 0..arguments.client {
+            // let socket = TcpSocket::new_v4().unwrap();
+            // let keepalive = TcpKeepalive::default()
+            //     .with_time(Duration::from_secs(4));
+            // socket.set_keepalive_params(keepalive);
             match TcpStream::connect(
                 server_port
                     .parse()
@@ -182,13 +260,10 @@ impl TCPWorker {
                 }
                 Ok(mut stream) => {
                     poll.registry()
-                        .register(
-                            &mut stream,
-                            Token(i),
-                            Interest::READABLE | Interest::WRITABLE,
-                        )
+                        .register(&mut stream, Token(i), Interest::WRITABLE)
                         .expect("registr event fail");
-                    debug!("register for socket {}", i);
+                    debug!("register Interest::WRITABLE for socket {}", i);
+                    // stream.set_keepalive();
                     sockets.push(stream);
                 }
             }
@@ -198,6 +273,7 @@ impl TCPWorker {
             poll,
             events,
             sockets,
+            // server_port,
         })
     }
 
@@ -276,4 +352,12 @@ impl TCPWorker {
     //         write_thread: Some(thread),
     //     }
     // }
+}
+
+fn would_block(err: &std::io::Error) -> bool {
+    err.kind() == std::io::ErrorKind::WouldBlock
+}
+
+fn interrupted(err: &std::io::Error) -> bool {
+    err.kind() == std::io::ErrorKind::Interrupted
 }

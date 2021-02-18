@@ -86,4 +86,8 @@ impl QueryProducer {
 
         PacketGeneratorStatus::Success(message.0, message.1)
     }
+
+    pub fn return_back(&mut self) {
+        self.counter -= 1;
+    }
 }
