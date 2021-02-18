@@ -66,6 +66,10 @@ impl Runner {
                             }
                         }
                     }
+                    if args.client == 0 {
+                        args.client = 1;
+                    }
+                    debug!("{} {} {}", args.client, args.max, args.qps);
                     workers.push((worker_factory(args), *core_id));
                 }
             }

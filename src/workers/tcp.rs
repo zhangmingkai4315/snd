@@ -9,12 +9,9 @@ use crate::runner::report::StatusStore;
 use crate::runner::QueryProducer;
 use crate::utils::Argument;
 use mio::event::Event;
-use mio::net::{TcpKeepalive, TcpSocket};
 use mio::{net::TcpStream, Events, Interest, Poll, Token};
 use std::collections::HashMap;
 use std::ops::Add;
-use std::thread::sleep;
-use std::time::Duration;
 
 pub struct TCPWorker {
     arguments: Argument,
@@ -68,6 +65,10 @@ impl TCPWorker {
                 }
                 // Other errors we'll consider fatal.
                 Err(err) => {
+                    if err.kind() == std::io::ErrorKind::ConnectionReset {
+                        return SocketStatus::Close;
+                    }
+                    debug!("read data error: {}", err.to_string());
                     return SocketStatus::Err(err.to_string());
                 }
             };
@@ -76,6 +77,7 @@ impl TCPWorker {
             data.copy_from_slice(&received_data[0..data.len()]);
             SocketStatus::Success
         } else {
+            debug!("read zero byte");
             SocketStatus::Close
         }
     }
@@ -109,7 +111,7 @@ impl Worker for TCPWorker {
                 let token = event.token();
                 let ref mut connection = self.sockets[token.0];
                 if event.is_writable() {
-                    debug!("socket {} is writable", token.0);
+                    // debug!("socket {} is writable", token.0);
                     match producer.retrieve() {
                         PacketGeneratorStatus::Success(data, qtype) => {
                             let key = ((data[2] as u16) << 8) | (data[3] as u16);
@@ -129,7 +131,7 @@ impl Worker for TCPWorker {
                                         .expect("reregister fail");
                                 }
                                 SocketStatus::WouldBlock => {
-                                    debug!("receive would block");
+                                    // debug!("receive would block");
                                     producer.return_back();
                                 }
                                 SocketStatus::Err(e) => {
@@ -142,21 +144,24 @@ impl Worker for TCPWorker {
                                 }
                             };
                         }
-                        PacketGeneratorStatus::Wait(wait) => {
-                            debug!("wait for next ticker");
+                        PacketGeneratorStatus::Wait(_) => {
+                            // debug!("wait for next ticker");
                             self.poll
                                 .registry()
                                 .reregister(connection, token, Interest::WRITABLE)
                                 .expect("reregister fail");
-                            // sleep(std::time::Duration::from_nanos(wait));
                         }
                         PacketGeneratorStatus::Stop => {
+                            // self.poll
+                            //     .registry()
+                            //     .reregister(connection, token, Interest::READABLE)
+                            //     .expect("reregister fail");
                             debug!("receive stop signal");
                         }
                     }
                 }
                 if event.is_readable() {
-                    debug!("socket {} is readable", token.0);
+                    // debug!("socket {} is readable", token.0);
                     let result = TCPWorker::read_data(connection, dns_packet.as_mut_slice());
                     match result {
                         SocketStatus::Success => {
@@ -185,23 +190,28 @@ impl Worker for TCPWorker {
                                 continue;
                             }
                         }
-                        _ => {
-                            error!("read socket fail")
+                        SocketStatus::Close => {
+                            // reset socket should not count as a error
+                            debug!("reset socket");
+                            // producer.return_back();
                         }
+                        _ => error!("read socket fail"),
                     }
                 }
-                if (max_send > 0 && (receive_counter == max_send))
-                    || stop_sender_timer.elapsed().unwrap() > std::time::Duration::from_secs(5)
-                {
-                    debug!(
-                        "should break loop {} {} cpu={}",
-                        send_counter, receive_counter, id
-                    );
-                    break 'outer;
-                }
             }
-
-            if let Err(e) = self.poll.poll(&mut self.events, None) {
+            if (max_send > 0 && (receive_counter == max_send))
+                || stop_sender_timer.elapsed().unwrap() > std::time::Duration::from_secs(5)
+            {
+                debug!(
+                    "should break loop send = {} receive = {} cpu={}",
+                    send_counter, receive_counter, id
+                );
+                break 'outer;
+            }
+            if let Err(e) = self.poll.poll(
+                &mut self.events,
+                Option::from(std::time::Duration::from_secs(5)),
+            ) {
                 error!("poll event fail: {}", e.to_string());
                 break;
             }
