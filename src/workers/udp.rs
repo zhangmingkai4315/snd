@@ -3,12 +3,10 @@ use crate::runner::consumer::ResponseConsumer;
 use crate::runner::report::StatusStore;
 use crate::runner::{producer::PacketGeneratorStatus, QueryProducer};
 use crate::utils::Argument;
-
 use mio::net::UdpSocket;
 use mio::{Events, Interest, Poll, Token};
 use std::collections::HashMap;
 use std::ops::Add;
-use std::thread::sleep;
 use trust_dns_client::op::Header;
 use trust_dns_client::proto::serialize::binary::BinDecodable;
 
@@ -47,7 +45,8 @@ impl Worker for UDPWorker {
         'outer: loop {
             for event in self.events.iter() {
                 // debug!("loop for events");
-                match event.token() {
+                let token = event.token();
+                match token {
                     Token(i) if event.is_writable() => {
                         match producer.retrieve() {
                             PacketGeneratorStatus::Success(data, qtype) => {
@@ -57,6 +56,11 @@ impl Worker for UDPWorker {
                                     error!("send error : {}", e);
                                     producer.return_back();
                                 }
+                                self.poll
+                                .registry()
+                                .reregister(&mut self.sockets[i], token, Interest::READABLE)
+                                .expect("reregister fail");
+
                                 send_counter += 1;
                                 producer.store.update_query(qtype);
                                 debug!(
@@ -65,19 +69,26 @@ impl Worker for UDPWorker {
                                 );
                                 stop_sender_timer = std::time::SystemTime::now();
                             }
-                            PacketGeneratorStatus::Wait(wait) => {
-                                sleep(std::time::Duration::from_nanos(wait));
+                            PacketGeneratorStatus::Wait(_) => {
+                                // sleep(std::time::Duration::from_nanos(wait));
+                                self.poll
+                                .registry()
+                                .reregister(&mut self.sockets[i], token, Interest::WRITABLE)
+                                .expect("reregister fail");
                             }
                             PacketGeneratorStatus::Stop => {
-                                // debug!("receive stop signal");
+                                debug!("receive stop signal");
                             }
                         };
-                        register_sockets[i] = true;
                     }
                     Token(i) if event.is_readable() => {
                         // Read Event
                         let mut buffer = vec![0; HEADER_SIZE];
                         if let Ok(size) = self.sockets[i].recv(&mut buffer) {
+                            self.poll
+                                .registry()
+                                .reregister(&mut self.sockets[i], token, Interest::WRITABLE)
+                                .expect("reregister fail");
                             debug!(
                                 "receive success in socket {} current={} cpu={}",
                                 i, receive_counter, id
@@ -90,7 +101,6 @@ impl Worker for UDPWorker {
                                 }
                                 _ => 0.0,
                             };
-                            register_sockets[i] = true;
                             if let Ok(message) = Header::from_bytes(&buffer[..size]) {
                                 consumer.receive(&MessageOrHeader::Header((message, duration)));
                             } else {
@@ -191,7 +201,7 @@ impl UDPWorker {
                 .register(
                     &mut socket,
                     Token(i),
-                    Interest::READABLE | Interest::WRITABLE,
+                 Interest::WRITABLE,
                 )
                 .expect("registr event fail");
             debug!("register for socket {}", i);

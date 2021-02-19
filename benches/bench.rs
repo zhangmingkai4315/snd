@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use lib::runner::cache::Cache;
 use lib::runner::QueryProducer;
 use lib::utils::{Argument, Protocol};
