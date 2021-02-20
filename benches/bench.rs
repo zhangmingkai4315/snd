@@ -1,4 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
+use crossbeam_channel::IntoIter;
 use lib::runner::cache::Cache;
 use lib::runner::QueryProducer;
 use lib::utils::{Argument, Protocol};

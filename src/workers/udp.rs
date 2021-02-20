@@ -51,7 +51,9 @@ impl Worker for UDPWorker {
                         match producer.retrieve() {
                             PacketGeneratorStatus::Success(data, qtype) => {
                                 let key = ((data[0] as u16) << 8) | (data[1] as u16);
-                                time_store.insert(key, chrono::Utc::now().timestamp_nanos());
+                                if key % 10 == 1 {
+                                    time_store.insert(key, std::time::SystemTime::now());
+                                }
                                 if let Err(e) = self.sockets[i].send(data) {
                                     error!("send error : {}", e);
                                     producer.return_back();
@@ -94,13 +96,12 @@ impl Worker for UDPWorker {
                                 i, receive_counter, id
                             );
                             let key = ((buffer[0] as u16) << 8) | (buffer[1] as u16);
-                            let duration = match time_store.get(&key) {
-                                Some(start) => {
-                                    (chrono::Utc::now().timestamp_nanos() - start) as f64
-                                        / 1000000000.0
+                            let mut duration: f64 = 0.0;
+                            if key % 10 == 1{
+                                if let Some(start) = time_store.get(&key){
+                                        duration = start.elapsed().unwrap().as_secs_f64();
                                 }
-                                _ => 0.0,
-                            };
+                            }
                             if let Ok(message) = Header::from_bytes(&buffer[..size]) {
                                 consumer.receive(&MessageOrHeader::Header((message, duration)));
                             } else {

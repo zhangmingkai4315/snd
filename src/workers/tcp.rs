@@ -115,12 +115,15 @@ impl Worker for TCPWorker {
                     match producer.retrieve() {
                         PacketGeneratorStatus::Success(data, qtype) => {
                             let key = ((data[2] as u16) << 8) | (data[3] as u16);
-                            time_store.insert(key, chrono::Utc::now().timestamp_nanos());
+                            // sample 1/10
+                            if key % 10 == 1 {
+                                time_store.insert(key, std::time::SystemTime::now());
+                            }
                             match TCPWorker::write_data(connection, event, data) {
                                 SocketStatus::Success => {
                                     send_counter += 1;
                                     producer.store.update_query(qtype);
-                                    stop_sender_timer = std::time::SystemTime::now();
+                                    // 
                                     debug!(
                                         "send success receive = {},  current = {}",
                                         receive_counter, send_counter
@@ -157,6 +160,7 @@ impl Worker for TCPWorker {
                             //     .reregister(connection, token, Interest::READABLE)
                             //     .expect("reregister fail");
                             debug!("receive stop signal");
+                            stop_sender_timer = std::time::SystemTime::now();
                         }
                     }
                 }
@@ -170,30 +174,28 @@ impl Worker for TCPWorker {
                                 .reregister(connection, token, Interest::WRITABLE)
                                 .expect("reregister fail");
                             let key = ((dns_packet[2] as u16) << 8) | (dns_packet[3] as u16);
-                            let duration = match time_store.get(&key) {
-                                Some(start) => {
-                                    (chrono::Utc::now().timestamp_nanos() - start) as f64
-                                        / 1000000000.0
+                            // sample 1/10
+                            let mut duration: f64 = 0.0;
+                            if key % 10 == 1{
+                                if let Some(start) = time_store.get(&key){
+                                        duration = start.elapsed().unwrap().as_secs_f64();
                                 }
-                                _ => 0.0,
-                            };
+                            }
+                            receive_counter += 1;
                             debug!(
-                                "receive success receive = {},  current = {}",
+                                "receive success receive = {},  send = {}",
                                 receive_counter, send_counter
                             );
                             if let Ok(message) = Header::from_bytes(&dns_packet[2..HEADER_SIZE + 2])
                             {
                                 consumer.receive(&MessageOrHeader::Header((message, duration)));
-                                receive_counter += 1;
                             } else {
                                 error!("parse dns message error");
                                 continue;
                             }
                         }
                         SocketStatus::Close => {
-                            // reset socket should not count as a error
                             debug!("reset socket");
-                            // producer.return_back();
                         }
                         _ => error!("read socket fail"),
                     }
@@ -210,7 +212,7 @@ impl Worker for TCPWorker {
             }
             if let Err(e) = self.poll.poll(
                 &mut self.events,
-                Option::from(std::time::Duration::from_secs(5)),
+                Option::from(std::time::Duration::from_secs(1)),
             ) {
                 error!("poll event fail: {}", e.to_string());
                 break;

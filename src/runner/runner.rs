@@ -69,7 +69,7 @@ impl Runner {
                     if args.client == 0 {
                         args.client = 1;
                     }
-                    debug!("{} {} {}", args.client, args.max, args.qps);
+                    debug!("worker_{}: client={} max={} qps={}", index,args.client, args.max, args.qps);
                     workers.push((worker_factory(args), *core_id));
                 }
             }
@@ -81,7 +81,7 @@ impl Runner {
         })
     }
     pub fn run(&mut self) {
-        debug!("start runner and generate many threads");
+        debug!("start runner and generate workers");
         let worker_number = self.workers.len();
         let mut query_store_total = StatusStore::new();
         let mut response_store_total = StatusStore::new();

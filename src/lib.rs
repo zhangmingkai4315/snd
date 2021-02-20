@@ -1,5 +1,4 @@
 extern crate base64;
-extern crate chrono;
 extern crate governor;
 extern crate leaky_bucket;
 extern crate net2;

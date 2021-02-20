@@ -12,3 +12,5 @@ Cargo.lock
 /snd-18083.mm_profdata
 /rustc.svg
 /chrome_profiler.json
+perf.data
+flamegraph.svg
