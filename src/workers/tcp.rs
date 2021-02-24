@@ -222,7 +222,7 @@ impl Worker for TCPWorker {
                 if now >= next_status_send {
                     producer
                         .store
-                        .set_send_duration(now.duration_since(start).unwrap());
+                        .set_send_duration(now.duration_since(start.clone()).unwrap());
                     consumer.store.set_receive_total(receive_counter);
                     consumer.update_report();
                     if let Err(err) = sender.send((producer.store.clone(), consumer.store.clone()))
@@ -257,10 +257,6 @@ impl TCPWorker {
         let mut sockets = vec![];
 
         for i in 0..arguments.client {
-            // let socket = TcpSocket::new_v4().unwrap();
-            // let keepalive = TcpKeepalive::default()
-            //     .with_time(Duration::from_secs(4));
-            // socket.set_keepalive_params(keepalive);
             match TcpStream::connect(
                 server_port
                     .parse()

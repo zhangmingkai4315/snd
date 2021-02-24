@@ -69,7 +69,6 @@ impl Worker for UDPWorker {
                                     "send success in socket {} current={} cpu={}",
                                     i, send_counter, id
                                 );
-                                stop_sender_timer = std::time::SystemTime::now();
                             }
                             PacketGeneratorStatus::Wait(_) => {
                                 // sleep(std::time::Duration::from_nanos(wait));
@@ -79,6 +78,7 @@ impl Worker for UDPWorker {
                                 .expect("reregister fail");
                             }
                             PacketGeneratorStatus::Stop => {
+                                stop_sender_timer = std::time::SystemTime::now();
                                 debug!("receive stop signal");
                             }
                         };
@@ -148,7 +148,7 @@ impl Worker for UDPWorker {
                 if now >= next_status_send {
                     producer
                         .store
-                        .set_send_duration(now.duration_since(start).unwrap());
+                        .set_send_duration(now.duration_since(start.clone()).unwrap());
                     consumer.store.set_receive_total(receive_counter);
                     consumer.update_report();
                     if let Err(err) = sender.send((producer.store.clone(), consumer.store.clone()))
