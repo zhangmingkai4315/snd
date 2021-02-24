@@ -35,11 +35,10 @@ impl Worker for UDPWorker {
         let mut send_counter: u64 = 0;
         let mut receive_counter: u64 = 0;
         let start = std::time::SystemTime::now();
+
         if let Err(e) = self.poll.poll(&mut self.events, None) {
             error!("poll event fail: {}", e.to_string());
         };
-        let sockets_number = self.sockets.len();
-        let mut register_sockets = vec![false; sockets_number];
         let mut time_store = HashMap::new();
 
         'outer: loop {
@@ -58,10 +57,11 @@ impl Worker for UDPWorker {
                                     error!("send error : {}", e);
                                     producer.return_back();
                                 }
+                                stop_sender_timer = std::time::SystemTime::now();
                                 self.poll
-                                .registry()
-                                .reregister(&mut self.sockets[i], token, Interest::READABLE)
-                                .expect("reregister fail");
+                                    .registry()
+                                    .reregister(&mut self.sockets[i], token, Interest::READABLE)
+                                    .expect("reregister fail");
 
                                 send_counter += 1;
                                 producer.store.update_query(qtype);
@@ -73,13 +73,12 @@ impl Worker for UDPWorker {
                             PacketGeneratorStatus::Wait(_) => {
                                 // sleep(std::time::Duration::from_nanos(wait));
                                 self.poll
-                                .registry()
-                                .reregister(&mut self.sockets[i], token, Interest::WRITABLE)
-                                .expect("reregister fail");
+                                    .registry()
+                                    .reregister(&mut self.sockets[i], token, Interest::WRITABLE)
+                                    .expect("reregister fail");
                             }
                             PacketGeneratorStatus::Stop => {
-                                stop_sender_timer = std::time::SystemTime::now();
-                                debug!("receive stop signal");
+                         
                             }
                         };
                     }
@@ -97,9 +96,9 @@ impl Worker for UDPWorker {
                             );
                             let key = ((buffer[0] as u16) << 8) | (buffer[1] as u16);
                             let mut duration: f64 = 0.0;
-                            if key % 10 == 1{
-                                if let Some(start) = time_store.get(&key){
-                                        duration = start.elapsed().unwrap().as_secs_f64();
+                            if key % 10 == 1 {
+                                if let Some(record_start) = time_store.get(&key) {
+                                    duration = record_start.elapsed().unwrap().as_secs_f64();
                                 }
                             }
                             if let Ok(message) = Header::from_bytes(&buffer[..size]) {
@@ -125,20 +124,6 @@ impl Worker for UDPWorker {
                     }
                 }
             }
-            for i in 0..sockets_number {
-                if register_sockets[i] == true {
-                    self.poll
-                        .registry()
-                        .reregister(
-                            &mut self.sockets[i],
-                            Token(i),
-                            Interest::WRITABLE | Interest::READABLE,
-                        )
-                        .expect("re register socket fail");
-                    register_sockets[i] = false;
-                }
-            }
-
             if let Err(e) = self.poll.poll(&mut self.events, None) {
                 error!("poll event fail: {}", e.to_string());
                 break;
@@ -160,6 +145,17 @@ impl Worker for UDPWorker {
             }
         }
         std::mem::drop(sender);
+        match stop_sender_timer.duration_since(start) {
+            Ok(v) => {
+                producer.store.set_send_duration(v);
+            }
+            _ => {
+                warn!(
+                    "{} {} {:?} {:?}",
+                    receive_counter, send_counter, stop_sender_timer, start
+                );
+            }
+        }
         producer
             .store
             .set_send_duration(stop_sender_timer.duration_since(start).unwrap());
@@ -199,11 +195,7 @@ impl UDPWorker {
                 continue;
             }
             poll.registry()
-                .register(
-                    &mut socket,
-                    Token(i),
-                 Interest::WRITABLE,
-                )
+                .register(&mut socket, Token(i), Interest::WRITABLE)
                 .expect("registr event fail");
             debug!("register for socket {}", i);
             sockets.push(socket);

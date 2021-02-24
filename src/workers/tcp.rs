@@ -123,7 +123,8 @@ impl Worker for TCPWorker {
                                 SocketStatus::Success => {
                                     send_counter += 1;
                                     producer.store.update_query(qtype);
-                                    // 
+                                    stop_sender_timer = std::time::SystemTime::now();
+                                    //
                                     debug!(
                                         "send success receive = {},  current = {}",
                                         receive_counter, send_counter
@@ -155,17 +156,11 @@ impl Worker for TCPWorker {
                                 .expect("reregister fail");
                         }
                         PacketGeneratorStatus::Stop => {
-                            // self.poll
-                            //     .registry()
-                            //     .reregister(connection, token, Interest::READABLE)
-                            //     .expect("reregister fail");
                             debug!("receive stop signal");
-                            stop_sender_timer = std::time::SystemTime::now();
                         }
                     }
                 }
                 if event.is_readable() {
-                    // debug!("socket {} is readable", token.0);
                     let result = TCPWorker::read_data(connection, dns_packet.as_mut_slice());
                     match result {
                         SocketStatus::Success => {
@@ -176,9 +171,9 @@ impl Worker for TCPWorker {
                             let key = ((dns_packet[2] as u16) << 8) | (dns_packet[3] as u16);
                             // sample 1/10
                             let mut duration: f64 = 0.0;
-                            if key % 10 == 1{
-                                if let Some(start) = time_store.get(&key){
-                                        duration = start.elapsed().unwrap().as_secs_f64();
+                            if key % 10 == 1 {
+                                if let Some(start) = time_store.get(&key) {
+                                    duration = start.elapsed().unwrap().as_secs_f64();
                                 }
                             }
                             receive_counter += 1;
