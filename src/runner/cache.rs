@@ -23,7 +23,6 @@ impl Cache {
         let file = args.file.to_owned();
         let mut query_data = vec![];
         if let Ok(lines) = read_lines(file) {
-            // Consumes the iterator, returns an (Optional) String
             for line in lines {
                 if let Ok(query_type) = line {
                     let mut splitter = query_type.split_whitespace();
@@ -172,9 +171,10 @@ impl Cache {
         self.counter += 1;
         let ref mut data = self.cache[self.counter % self.size];
         if self.need_rebuild == true {
-            let id = Cache::get_random_id();
-            data.0[self.offset] = id[0];
-            data.0[self.offset + 1] = id[1];
+            // let id = Cache::get_random_id();
+            let id:u16 = (self.counter % 65534) as u16;
+            data.0[self.offset] =  ((id & 0xff00) >> 8) as u8;
+            data.0[self.offset + 1] = (id & 0x00ff) as u8;
         }
         (data.0.as_slice().as_ref(), data.1)
     }
