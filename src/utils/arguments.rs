@@ -103,12 +103,9 @@ OPTIONS:
     -I, --interval <second>                        output result interval for dns benchmark [default: 0]
         --edns-size <edns-size>                    set opt max EDNS buffer size [default: 1232]
         --protocol <protocol>                      the packet protocol for send dns request [default: UDP]
-                                                   support protocols [UDP, TCP, DOT, DOH]
-        --doh-server <doh-server>                  doh server based RFC8484 [default: https://dns.alidns.com/dns-query]
-        --doh-server-method <doh-server-method>    doh http method[GET/POST] [default: GET]
+                                                   support protocols [UDP, TCP]
         --source-ip <source>                       set the source ip address [default: 0.0.0.0]
         --timeout <timeout>                        timeout for wait the packet arrive [default: 5]
-        --packet-id <packet-id>                    set to zero will random select a packet id [default: 0]
         --bind-cpu <mode>                          bind worker to cpu [default: random]
                                                    option value [\"random\", \"all\", \"0,1,2,3\", \"0,3\"]
 
@@ -124,6 +121,10 @@ VERSION:
     -V, --version              Prints version information
 "
 )]
+
+//         --doh-server <doh-server>                  doh server based RFC8484 [default: https://dns.alidns.com/dns-query]
+//         --doh-server-method <doh-server-method>    doh http method[GET/POST] [default: GET]
+
 pub struct Argument {
     #[structopt(
         short = "s",

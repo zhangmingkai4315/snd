@@ -1,7 +1,6 @@
 use crate::runner::report::{RunnerReport, StatusStore};
 use crate::utils::utils::cpu_mode_to_cpu_cores;
 use crate::utils::{Argument, Protocol};
-use crate::workers::doh::DOHWorker;
 use crate::workers::tcp::TCPWorker;
 use crate::workers::{
     // doh::DOHWorker, tcp::TCPWorker,  udp_async::UDPAsyncWorker,dot::DoTWorker,
@@ -24,7 +23,7 @@ impl Runner {
         let protocol = arguments.protocol.clone();
         let worker_factory: fn(Argument) -> Box<dyn Worker> = match protocol {
             Protocol::TCP => TCPWorker::new,
-            Protocol::DOH => DOHWorker::new,
+            // Protocol::DOH => DOHWorker::new,
             Protocol::UDP => UDPWorker::new,
             _ => {
                 unimplemented!()
