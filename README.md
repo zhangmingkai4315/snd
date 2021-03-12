@@ -6,6 +6,8 @@ you can set almost every bit of the packet using arguments.
 #### 1. Usage
 
 ```
+# ./target/release/snd -h
+snd 0.1.0
 a dns traffic generator
 
 USAGE:
@@ -16,30 +18,32 @@ OPTIONS:
     -p, --port <port>                              the dns server port number [default: 53]
     -d, --domain <domain>                          domain name for dns query [default: example.com]
     -t, --type <qty>                               dns query type [default: A]
+    -T, --time <time>                              how long it will send until stop [default: 0]
     -q, --qps <qps>                                dns query per second [default: 10]
     -m, --max <max>                                max dns packets will be send [default: 100]
-    -c, --client <client>                          concurrent dns query clients [default: 10]
-    -f, --file <file>                              the dns query file [default: ""]
+    -c, --client <client>                          concurrent clients numbers, set to 0 will replace with the number of cpu cores [default: 0]
+    -f, --file <file>                              the dns query file, default using -d for single domain query [default: ""]
+    -o, --output <file>                            format output report to stdout, .json or .yaml file [default: "stdout"]
+    -I, --interval <second>                        output result interval for dns benchmark [default: 0]
         --edns-size <edns-size>                    set opt max EDNS buffer size [default: 1232]
         --protocol <protocol>                      the packet protocol for send dns request [default: UDP]
-                                                   support protocols [UDP, TCP, DOT, DOH]
-        --doh-server <doh-server>                  doh server based RFC8484 [default: https://dns.alidns.com/dns-query]
-        --doh-server-method <doh-server-method>    doh http method[GET/POST] [default: GET]
+                                                   support protocols [UDP, TCP]
         --source-ip <source>                       set the source ip address [default: 0.0.0.0]
         --timeout <timeout>                        timeout for wait the packet arrive [default: 5]
-        --packet-id <packet-id>                    set to zero will random select a packet id [default: 0]
+        --bind-cpu <mode>                          bind worker to cpu [default: random]
+                                                   option value ["random", "all", "0,1,2,3", "0,3"]
+
 FLAGS:
-        --check-all-message    default only check response header
         --debug                enable debug mode
         --disable-edns         disable EDNS
         --disable-rd           RD (recursion desired) bit in the query
         --enable-cd            CD (checking disabled) bit in the query
         --enable-dnssec        enable dnssec
-        --file-loop            read dns query file in loop mode
 HELP:
     -h, --help                 Prints help information
 VERSION:
     -V, --version              Prints version information
+
 ```
 
 ##### DNS over UDP 
@@ -70,7 +74,7 @@ snd -m 20 -q 5 -s 8.8.8.8 -d google.com -t NS
 snd -m 20 -q 5 -s 8.8.8.8 -d google.com -t A --protocol tcp
 ```
 
-##### DoH
+##### DoH(main branch)
 
 - total query packets to 20
 - query per second to 5
@@ -87,7 +91,7 @@ snd -m 20 -q 5 -d google.com -t NS --protocol DOH --enable-dnssec --debug --doh-
 ```
 
 
-##### DNS over DOT
+##### DNS over DOT(main)
 
 - total query packets to 20
 - query per second to 5
@@ -140,34 +144,62 @@ snd -s 127.0.0.1 -m 200 -q 10 -c 1 -f query.txt
 ```
 
 
-#### 3. Load Test 
-
-Test Environments is a mac mini, install a local dns server for test. If you set up the environment at split dns server and snd load generator,
-maybe can get much higher qps number.
-
-```
-Mac mini (2018)
-3 GHz 6 Core Intel Core i5
-32 GB 2667 MHz DDR4
-DNS Server run at 127.0.0.1 / unbound 
-```
+#### 3. Load Test(mio-version branch) 
 
 
 ```
+CPU       : Intel(R) Xeon(R) CPU E7-4820 v4 @ 2.00GHz 
+            80 Core  
+Memory    : 64 GB DDR4
+DNS Server: knotd (Knot DNS), version 2.8.3
+Network   : Ethernet controller: Intel Corporation Ethernet Controller X710 for 10GbE SFP+ (rev 01)
+            Channel parameters for ens3f0::
+            Pre-set maximums:
+            RX:             0
+            TX:             0
+            Other:          1
+            Combined:       80
+            Current hardware settings:
+            RX:             0
+            TX:             0
+            Other:          1
+            Combined:       80
+
+```
+
+
+```
+./snd -s 192.168.9.4 -d www.test.cn -t A -m 20000000 -q 0  -c 800 -I 1 --bind-cpu all 
+
 ------------   Report   --------------
-     Total Cost : PT7.533013S (+time wait)
-     Start Time : 2021-01-08T21:30:42.674911+08:00
-       End Time : 2021-01-08T21:30:50.207924+08:00
-    Total Query : 1000000
-       Question : NS = 1000000
- Total Response : 1000000
-  Response Code : No Error=1000000
-   Success Rate : 100.00%
-    Average QPS : 132749
-    Min Latency : 18.025µs
-    Max Latency : 100.793625ms
-   Mean Latency : 55.011µs
-    99% Latency : 86.39µs
-    90% Latency : 64.415µs
-    50% Latency : 52.762µs
+      Total Cost: 10.00417498s
+     Total Query: 15492396
+        Question: A=15492396
+  Total Response: 15491682
+   Response Code: No Error=15491682
+    Success Rate: 100.00%
+     Average QPS: 1548593
+     Min Latency: 42.739µs
+     Max Latency: 126.659958ms
+    Mean Latency: 341.968µs
+     99% Latency: 1.173245ms
+     95% Latency: 681.721µs
+     90% Latency: 586.435µs
+     50% Latency: 282.023µs
+------------   Report   --------------
+      Total Cost: 10.823781656s
+     Total Query: 20000000
+        Question: A=20000000
+  Total Response: 20000000
+   Response Code: No Error=20000000
+    Success Rate: 100.00%
+     Average QPS: 1847783
+     Min Latency: 42.739µs
+     Max Latency: 126.659958ms
+    Mean Latency: 275.238µs
+     99% Latency: 720.31µs
+     95% Latency: 381.252µs
+     90% Latency: 326.202µs
+     50% Latency: 233.171µs
+
 ```
