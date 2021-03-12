@@ -255,10 +255,6 @@ impl TCPWorker {
         let mut sockets = vec![];
 
         for i in 0..arguments.client {
-            // let socket = TcpSocket::new_v4().unwrap();
-            // let keepalive = TcpKeepalive::default()
-            //     .with_time(Duration::from_secs(4));
-            // socket.set_keepalive_params(keepalive);
             match TcpStream::connect(
                 server_port
                     .parse()
@@ -273,7 +269,6 @@ impl TCPWorker {
                         .register(&mut stream, Token(i), Interest::WRITABLE)
                         .expect("registr event fail");
                     debug!("register Interest::WRITABLE for socket {}", i);
-                    // stream.set_keepalive();
                     sockets.push(stream);
                 }
             }

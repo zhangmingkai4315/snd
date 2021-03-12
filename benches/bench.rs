@@ -45,10 +45,38 @@ fn bench_cache_with_dynamic_id(c: &mut Criterion) {
     });
 }
 
+fn bench_time_consumer_api_instance(c: &mut Criterion) {
+    let start_instance_time = std::time::Instant::now();
+    c.bench_function("bench instance duration", |b| {
+        b.iter(|| {
+            start_instance_time.elapsed().as_secs_f64();
+        })
+    });
+}
+
+fn bench_time_consumer_api_system(c: &mut Criterion) {
+    let start_system_time = std::time::SystemTime::now();
+    c.bench_function("bench system duration", |b| {
+        b.iter(|| {
+            start_system_time.elapsed().unwrap().as_secs_f64();
+        })
+    });
+}
+
+fn bench_time_consumer_api_chrono(c: &mut Criterion) {
+    let start_time = chrono::Utc::now();
+    c.bench_function("bench chrono duration", |b| {
+        b.iter(|| (chrono::Utc::now().time() - start_time.time()).num_nanoseconds())
+    });
+}
+
 criterion_group!(
     benches,
-    bench_producer,
-    bench_cache_with_static_id,
-    bench_cache_with_dynamic_id
+    // bench_producer,
+    // bench_cache_with_static_id,
+    // bench_cache_with_dynamic_id,
+    bench_time_consumer_api_system,
+    bench_time_consumer_api_instance,
+    bench_time_consumer_api_chrono,
 );
 criterion_main!(benches);

@@ -35,7 +35,9 @@ tokio = { version = "1", features = ["full"] }
 mio = "0.7.7"
 core_affinity = "0.5.10"
 crossbeam  = "0.8"
-
+h2 = "0.3.1"
+http = "0.2"
+bytes = "1"
 [dev-dependencies]
 criterion = { version = "0.3.4", features = ["html_reports"]}
 

@@ -78,24 +78,6 @@ fn parse_server(value: &str) -> Result<String, String> {
     }
     Ok(value.to_owned())
 }
-// #[derive(Debug, Clone, Default)]
-// pub struct DomainTypeVec(pub(crate) Vec<RecordType>);
-//
-// impl DomainTypeVec {
-//     pub fn size(&self) -> usize {
-//         self.0.len()
-//     }
-// }
-
-// impl Display for DomainTypeVec {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         let mut dtype_vec = vec![];
-//         for x in &self.0 {
-//             dtype_vec.push(x.to_string());
-//         }
-//         write!(f, "{}", dtype_vec.join(","))
-//     }
-// }
 
 #[derive(Debug, Clone, StructOpt)]
 #[structopt(

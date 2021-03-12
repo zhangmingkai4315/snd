@@ -11,9 +11,11 @@ extern crate trust_dns_client;
 extern crate validator;
 #[macro_use]
 extern crate log;
+extern crate bytes;
 extern crate core_affinity;
 extern crate crossbeam;
 extern crate crossbeam_channel;
+extern crate h2;
 extern crate num_cpus;
 extern crate rustls;
 extern crate serde_json;

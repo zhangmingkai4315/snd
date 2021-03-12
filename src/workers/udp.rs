@@ -57,9 +57,9 @@ impl Worker for UDPWorker {
                                     producer.return_back();
                                 }
                                 self.poll
-                                .registry()
-                                .reregister(&mut self.sockets[i], token, Interest::READABLE)
-                                .expect("reregister fail");
+                                    .registry()
+                                    .reregister(&mut self.sockets[i], token, Interest::READABLE)
+                                    .expect("reregister fail");
 
                                 send_counter += 1;
                                 producer.store.update_query(qtype);
@@ -72,9 +72,9 @@ impl Worker for UDPWorker {
                             PacketGeneratorStatus::Wait(_) => {
                                 // sleep(std::time::Duration::from_nanos(wait));
                                 self.poll
-                                .registry()
-                                .reregister(&mut self.sockets[i], token, Interest::WRITABLE)
-                                .expect("reregister fail");
+                                    .registry()
+                                    .reregister(&mut self.sockets[i], token, Interest::WRITABLE)
+                                    .expect("reregister fail");
                             }
                             PacketGeneratorStatus::Stop => {
                                 debug!("receive stop signal");
@@ -198,11 +198,7 @@ impl UDPWorker {
                 continue;
             }
             poll.registry()
-                .register(
-                    &mut socket,
-                    Token(i),
-                 Interest::WRITABLE,
-                )
+                .register(&mut socket, Token(i), Interest::WRITABLE)
                 .expect("registr event fail");
             debug!("register for socket {}", i);
             sockets.push(socket);

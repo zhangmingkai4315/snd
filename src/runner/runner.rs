@@ -1,6 +1,7 @@
 use crate::runner::report::{RunnerReport, StatusStore};
 use crate::utils::utils::cpu_mode_to_cpu_cores;
 use crate::utils::{Argument, Protocol};
+use crate::workers::doh::DOHWorker;
 use crate::workers::tcp::TCPWorker;
 use crate::workers::{
     // doh::DOHWorker, tcp::TCPWorker,  udp_async::UDPAsyncWorker,dot::DoTWorker,
@@ -23,7 +24,11 @@ impl Runner {
         let protocol = arguments.protocol.clone();
         let worker_factory: fn(Argument) -> Box<dyn Worker> = match protocol {
             Protocol::TCP => TCPWorker::new,
-            _ => UDPWorker::new,
+            Protocol::DOH => DOHWorker::new,
+            Protocol::UDP => UDPWorker::new,
+            _ => {
+                unimplemented!()
+            }
         };
         let mut workers: std::vec::Vec<(
             std::boxed::Box<(dyn Worker + 'static)>,
@@ -137,8 +142,6 @@ impl Runner {
             query_store_total = query_store_total + status.0;
             response_store_total = response_store_total + status.1;
         }
-
-        // let (query_store_total, response_store_total) = self.worker.run();
         self.report.set_producer_report(query_store_total);
         self.report
             .set_consumer_report(response_store_total.clone());
