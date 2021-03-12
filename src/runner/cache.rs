@@ -10,7 +10,7 @@ use trust_dns_client::proto::{
 };
 
 pub struct Cache {
-    packet_id_number: u16,
+    need_rebuild: bool,
     cache: Vec<(Vec<u8>, u16)>,
     counter: usize,
     size: usize,
@@ -23,7 +23,6 @@ impl Cache {
         let file = args.file.to_owned();
         let mut query_data = vec![];
         if let Ok(lines) = read_lines(file) {
-            // Consumes the iterator, returns an (Optional) String
             for line in lines {
                 if let Ok(query_type) = line {
                     let mut splitter = query_type.split_whitespace();
@@ -66,28 +65,32 @@ impl Cache {
         query_data
     }
     pub fn new_from_argument(args: &Argument) -> Vec<(Vec<u8>, u16)> {
-        let domain = args.domain.to_owned();
+        let domain = args.domain.clone();
         let qty = args.qty.as_str();
         let mut query_data = vec![];
         let qty = RecordType::from_str(qty).expect("unknown type");
-
-        let random_id = {
-            if args.packet_id == 0 {
-                Cache::get_random_id()
-            } else {
-                args.packet_id.to_be_bytes()
-            }
-        };
         let offset = {
             match args.protocol {
                 Protocol::TCP | Protocol::DOT => 2,
                 Protocol::UDP | Protocol::DOH => 0,
             }
         };
-        if let Some(mut v) = Cache::build_packet(domain, qty, args) {
-            v[offset] = random_id[0];
-            v[offset + 1] = random_id[1];
-            query_data.push((v, u16::from(qty)));
+        if args.packet_id == 0 {
+            for i in 0u16..=65534 {
+                let random_id = [(i >> 8) as u8, (i & 0x00ff) as u8];
+                if let Some(mut v) = Cache::build_packet(domain.clone(), qty, args) {
+                    v[offset] = random_id[0];
+                    v[offset + 1] = random_id[1];
+                    query_data.push((v, u16::from(qty)));
+                }
+            }
+        } else {
+            let random_id = args.packet_id.to_be_bytes();
+            if let Some(mut v) = Cache::build_packet(domain.clone(), qty, args) {
+                v[offset] = random_id[0];
+                v[offset + 1] = random_id[1];
+                query_data.push((v, u16::from(qty)));
+            }
         }
         query_data
     }
@@ -132,7 +135,6 @@ impl Cache {
     }
     pub fn new(argument: &Argument) -> Cache {
         // let domain = argument.domain.clone();
-        let packet_id_number = argument.packet_id;
         let offset = {
             match argument.protocol {
                 Protocol::TCP | Protocol::DOT => 2,
@@ -140,18 +142,20 @@ impl Cache {
             }
         };
         if argument.file.is_empty() {
+            let cache = Cache::new_from_argument(argument);
+            let size = cache.len();
             Cache {
-                packet_id_number,
-                cache: Cache::new_from_argument(argument),
+                need_rebuild: false,
+                cache,
                 counter: 0,
-                size: 1,
+                size,
                 offset,
             }
         } else {
             let cache = Cache::new_from_file(argument);
             let size = cache.len();
             Cache {
-                packet_id_number,
+                need_rebuild: argument.packet_id == 0,
                 cache,
                 counter: 0,
                 size,
@@ -166,10 +170,11 @@ impl Cache {
     pub fn build_message(&mut self) -> (&[u8], u16) {
         self.counter += 1;
         let ref mut data = self.cache[self.counter % self.size];
-        if self.packet_id_number == 0 {
-            let id = Cache::get_random_id();
-            data.0[self.offset] = id[0];
-            data.0[self.offset + 1] = id[1];
+        if self.need_rebuild == true {
+            // let id = Cache::get_random_id();
+            let id:u16 = (self.counter % 65534) as u16;
+            data.0[self.offset] =  ((id & 0xff00) >> 8) as u8;
+            data.0[self.offset + 1] = (id & 0x00ff) as u8;
         }
         (data.0.as_slice().as_ref(), data.1)
     }

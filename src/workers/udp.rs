@@ -35,11 +35,10 @@ impl Worker for UDPWorker {
         let mut send_counter: u64 = 0;
         let mut receive_counter: u64 = 0;
         let start = std::time::SystemTime::now();
+
         if let Err(e) = self.poll.poll(&mut self.events, None) {
             error!("poll event fail: {}", e.to_string());
         };
-        let sockets_number = self.sockets.len();
-        let mut register_sockets = vec![false; sockets_number];
         let mut time_store = HashMap::new();
 
         'outer: loop {
@@ -51,11 +50,14 @@ impl Worker for UDPWorker {
                         match producer.retrieve() {
                             PacketGeneratorStatus::Success(data, qtype) => {
                                 let key = ((data[0] as u16) << 8) | (data[1] as u16);
-                                time_store.insert(key, chrono::Utc::now().timestamp_nanos());
+                                if key % 10 == 1 {
+                                    time_store.insert(key, std::time::SystemTime::now());
+                                }
                                 if let Err(e) = self.sockets[i].send(data) {
                                     error!("send error : {}", e);
                                     producer.return_back();
                                 }
+                                stop_sender_timer = std::time::SystemTime::now();
                                 self.poll
                                     .registry()
                                     .reregister(&mut self.sockets[i], token, Interest::READABLE)
@@ -67,7 +69,6 @@ impl Worker for UDPWorker {
                                     "send success in socket {} current={} cpu={}",
                                     i, send_counter, id
                                 );
-                                stop_sender_timer = std::time::SystemTime::now();
                             }
                             PacketGeneratorStatus::Wait(_) => {
                                 // sleep(std::time::Duration::from_nanos(wait));
@@ -77,7 +78,7 @@ impl Worker for UDPWorker {
                                     .expect("reregister fail");
                             }
                             PacketGeneratorStatus::Stop => {
-                                debug!("receive stop signal");
+                         
                             }
                         };
                     }
@@ -94,13 +95,12 @@ impl Worker for UDPWorker {
                                 i, receive_counter, id
                             );
                             let key = ((buffer[0] as u16) << 8) | (buffer[1] as u16);
-                            let duration = match time_store.get(&key) {
-                                Some(start) => {
-                                    (chrono::Utc::now().timestamp_nanos() - start) as f64
-                                        / 1000000000.0
+                            let mut duration: f64 = 0.0;
+                            if key % 10 == 1 {
+                                if let Some(record_start) = time_store.get(&key) {
+                                    duration = record_start.elapsed().unwrap().as_secs_f64();
                                 }
-                                _ => 0.0,
-                            };
+                            }
                             if let Ok(message) = Header::from_bytes(&buffer[..size]) {
                                 consumer.receive(&MessageOrHeader::Header((message, duration)));
                             } else {
@@ -124,20 +124,6 @@ impl Worker for UDPWorker {
                     }
                 }
             }
-            for i in 0..sockets_number {
-                if register_sockets[i] == true {
-                    self.poll
-                        .registry()
-                        .reregister(
-                            &mut self.sockets[i],
-                            Token(i),
-                            Interest::WRITABLE | Interest::READABLE,
-                        )
-                        .expect("re register socket fail");
-                    register_sockets[i] = false;
-                }
-            }
-
             if let Err(e) = self.poll.poll(&mut self.events, None) {
                 error!("poll event fail: {}", e.to_string());
                 break;
@@ -147,7 +133,7 @@ impl Worker for UDPWorker {
                 if now >= next_status_send {
                     producer
                         .store
-                        .set_send_duration(now.duration_since(start).unwrap());
+                        .set_send_duration(now.duration_since(start.clone()).unwrap());
                     consumer.store.set_receive_total(receive_counter);
                     consumer.update_report();
                     if let Err(err) = sender.send((producer.store.clone(), consumer.store.clone()))
@@ -159,6 +145,17 @@ impl Worker for UDPWorker {
             }
         }
         std::mem::drop(sender);
+        match stop_sender_timer.duration_since(start) {
+            Ok(v) => {
+                producer.store.set_send_duration(v);
+            }
+            _ => {
+                warn!(
+                    "{} {} {:?} {:?}",
+                    receive_counter, send_counter, stop_sender_timer, start
+                );
+            }
+        }
         producer
             .store
             .set_send_duration(stop_sender_timer.duration_since(start).unwrap());

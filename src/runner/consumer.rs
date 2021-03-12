@@ -19,11 +19,15 @@ impl ResponseConsumer {
         match message {
             MessageOrHeader::Message((m, elapse)) => {
                 self.store.update_response_from_message(&m);
-                self.histogram.add(*elapse);
+                if *elapse != 0.0 {
+                    self.histogram.add(*elapse);
+                }
             }
             MessageOrHeader::Header((h, elapse)) => {
                 self.store.update_response_from_header(&h);
-                self.histogram.add(*elapse);
+                if *elapse != 0.0 {
+                    self.histogram.add(*elapse);
+                }
             }
             MessageOrHeader::End => {
                 self.update_report();
