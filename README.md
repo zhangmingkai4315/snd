@@ -1,4 +1,7 @@
 # snd
+
+![](./static/logo.png)
+
 snd is a dns traffic generator written by rust, it supports DNS over TCP/UDP and DOH. 
 you can set almost every bit of the packet using arguments. 
 
