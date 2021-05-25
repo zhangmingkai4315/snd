@@ -172,21 +172,6 @@ Network   : Ethernet controller: Intel Corporation Ethernet Controller X710 for 
 ./snd -s 192.168.9.4 -d www.test.cn -t A -m 20000000 -q 0  -c 800 -I 1 --bind-cpu all 
 
 ------------   Report   --------------
-      Total Cost: 10.00417498s
-     Total Query: 15492396
-        Question: A=15492396
-  Total Response: 15491682
-   Response Code: No Error=15491682
-    Success Rate: 100.00%
-     Average QPS: 1548593
-     Min Latency: 42.739µs
-     Max Latency: 126.659958ms
-    Mean Latency: 341.968µs
-     99% Latency: 1.173245ms
-     95% Latency: 681.721µs
-     90% Latency: 586.435µs
-     50% Latency: 282.023µs
-------------   Report   --------------
       Total Cost: 10.823781656s
      Total Query: 20000000
         Question: A=20000000
